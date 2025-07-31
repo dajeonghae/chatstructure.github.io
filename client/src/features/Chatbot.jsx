@@ -143,6 +143,7 @@ useEffect(() => {
     const latestIndex = latest - 1;
 
     setCurrentIndex(currSorted.indexOf(latest));
+    dispatch(setCurrentScrolledDialog(latest));
 
     console.log("🆕 [스크롤 트리거] 새로 추가된 활성 대화 번호:", latest);
     setTimeout(() => {
@@ -163,18 +164,13 @@ useEffect(() => {
   // 🔥 화살표 클릭 시 대화 이동
   const moveToMessage = (direction) => {
     const sortedDialogs = [...activeDialogNumbers].sort((a, b) => a - b);
-    const currentDialogIndex = sortedDialogs.indexOf(activeDialogNumbers[currentIndex]);
+    const currentScrolled = store.getState().node.currentScrolledDialog; // 최신 기준 상태
+    const currentDialogIndex = sortedDialogs.indexOf(currentScrolled);
     const nextIndex = currentDialogIndex + direction;
- 
-    console.log("🚀 [Arrow Move] 현재 활성 대화 인덱스:", currentDialogIndex);
-    console.log("🚀 [Arrow Move] 다음 인덱스:", nextIndex);
-    console.log("🚀 [Arrow Move] 방향:", direction);
-    console.log("🚀 [Arrow Move] 활성화된 대화 번호 목록:", sortedDialogs);
 
     if (nextIndex >= 0 && nextIndex < sortedDialogs.length) {
       const nextMessageNumber = sortedDialogs[nextIndex];
-      setCurrentIndex(nextIndex);
-      dispatch(setCurrentScrolledDialog(nextMessageNumber)); // 🔥 현재 이동한 대화 번호 설정
+      dispatch(setCurrentScrolledDialog(nextMessageNumber));
       scrollToMessage(nextMessageNumber - 1);
     }
   };
