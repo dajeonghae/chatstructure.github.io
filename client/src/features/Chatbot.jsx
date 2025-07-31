@@ -110,6 +110,7 @@ function Chatbot() {
 
   const dialogNumber = useSelector((state) => state.node.dialogCount);
   const activeDialogNumbers = useSelector((state) => state.node.activeDialogNumbers);  // 활성화된 대화 번호들
+  const currentScrolledDialog = useSelector((state) => state.node.currentScrolledDialog);
   const contextMode = useSelector((state) => state.mode.contextMode);
 
   // 🔥 대화 스크롤 이동 함수
@@ -126,34 +127,43 @@ function Chatbot() {
     }
   };
 
-// 🔥 활성화된 대화 번호가 변경될 때 최신 대화로 스크롤
-useEffect(() => {
-  const prevDialogs = prevActiveDialogNumbersRef.current;
-  const currDialogs = activeDialogNumbers;
 
-  // 정렬 (비교를 위해 정렬된 상태 유지)
-  const prevSorted = [...prevDialogs].sort((a, b) => a - b);
-  const currSorted = [...currDialogs].sort((a, b) => a - b);
+  useEffect(() => {
+    const prevDialogs = prevActiveDialogNumbersRef.current;
+    const currDialogs = activeDialogNumbers;
 
-  // 1. 추가된 항목 찾기
-  const newlyAdded = currSorted.filter(num => !prevSorted.includes(num));
+    const prevSorted = [...prevDialogs].sort((a, b) => a - b);
+    const currSorted = [...currDialogs].sort((a, b) => a - b);
 
-  if (newlyAdded.length > 0) {
-    const latest = newlyAdded[newlyAdded.length - 1]; // 가장 큰 번호로 스크롤
-    const latestIndex = latest - 1;
+    const newlyAdded = currSorted.filter(num => !prevSorted.includes(num));
+    const newlyRemoved = prevSorted.filter(num => !currSorted.includes(num));
 
-    setCurrentIndex(currSorted.indexOf(latest));
-    dispatch(setCurrentScrolledDialog(latest));
+    if (newlyAdded.length > 0) {
+      const latest = newlyAdded[newlyAdded.length - 1];
+      const latestIndex = latest - 1;
 
-    console.log("🆕 [스크롤 트리거] 새로 추가된 활성 대화 번호:", latest);
-    setTimeout(() => {
-      scrollToMessage(latestIndex);
-    }, 0);
-  }
+      setCurrentIndex(currSorted.indexOf(latest));
+      dispatch(setCurrentScrolledDialog(latest));
 
-  // 현재 값을 다음 비교를 위해 저장
-  prevActiveDialogNumbersRef.current = currDialogs;
-}, [activeDialogNumbers]);
+      setTimeout(() => {
+        scrollToMessage(latestIndex);
+      }, 0);
+    } else if (newlyRemoved.length > 0 && currSorted.length > 0) {
+      // 제거된 번호와 가장 가까운 남은 번호 찾기
+      const closest = currSorted.reduce((prev, curr) => {
+        return Math.abs(curr - currentScrolledDialog) < Math.abs(prev - currentScrolledDialog)
+          ? curr
+          : prev;
+      }, currSorted[0]);
+
+      dispatch(setCurrentScrolledDialog(closest));
+      setCurrentIndex(currSorted.indexOf(closest));
+
+      console.log("🔄 [상태만 갱신] closest:", closest);
+    }
+
+    prevActiveDialogNumbersRef.current = currDialogs;
+  }, [activeDialogNumbers]);
 
 
   // 🔥 새로운 대화가 추가될 때 아래로 스크롤
