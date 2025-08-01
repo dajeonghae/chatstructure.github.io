@@ -88,9 +88,6 @@ const nodeSlice = createSlice({
           });
           state.activeDialogNumbers = newActiveDialogs;
     
-          console.log("❌ 비활성화됨:", nodeId);
-          console.log("🔥 활성화된 노드 목록:", JSON.stringify(state.activeNodeIds));
-          console.log("🔥 활성화된 대화 번호 목록:", JSON.stringify(state.activeDialogNumbers));
           return;
         }
     
@@ -117,11 +114,6 @@ const nodeSlice = createSlice({
           // 🔥 가장 최근 대화로 스크롤되도록 설정
           const latestDialogNumber = uniqueDialogs[uniqueDialogs.length - 1];
           state.currentScrolledDialog = latestDialogNumber;
-
-          console.log("✅ [Redux] 활성화됨:", nodeId);
-          console.log("🔥 [Redux] 활성화된 노드 목록:", JSON.stringify(state.activeNodeIds));
-          console.log("🔥 [Redux] 활성화된 대화 번호 목록:", JSON.stringify(state.activeDialogNumbers));
-          console.log("🔥 [Redux] 현재 스크롤된 대화 번호:", state.currentScrolledDialog);
         }
 
         // 🔁 activeNodeIds 다시 계산
@@ -137,27 +129,29 @@ const nodeSlice = createSlice({
         });
         state.activeNodeIds = [...newActiveNodeIds];
 
-    
-        console.log("✅ 활성화됨:", nodeId);
         console.log("🔥 활성화된 노드 목록:", JSON.stringify(state.activeNodeIds));
-        console.log("🔥 활성화된 대화 번호 목록:", JSON.stringify(state.activeDialogNumbers));
       });
     },
 
     addOrUpdateNode: (state, action) => {
-      const { id, keyword, userMessage, gptMessage, contextMode } = action.payload;
+      const { id, keyword, userMessage, gptMessage, contextMode, parentNodeId } = action.payload;
 
       if (!state.nodes[id]) {
-        const parentNodeId = "root";
+        // const parent  = parentNodeId || "root";
+
         state.nodes[id] = {
           id,
           keyword,
-          parent: parentNodeId,
-          relation: "관련",
+          // parent,
+          // relation: "관련",
           children: [],
           dialog: {},
         };
-        state.nodes[parentNodeId].children.push(id);
+        
+        // if (state.nodes[parent]            // 안전 체크
+        //     && !state.nodes[parent].children.includes(id)) {
+        //   state.nodes[parent].children.push(id);
+        // }
       }
 
       const dialogNumber = state.dialogCount;

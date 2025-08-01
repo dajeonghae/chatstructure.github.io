@@ -132,9 +132,9 @@ const DialogBox = ({ text, isUser, nodeId, number }) => {
 
     const activeColor = nodeColors[actualNodeId];
 
-    console.log("🎯 nodeId:", actualNodeId);
-    console.log("🎯 activeColor:", activeColor);
-    console.log("🎯 nodeColors:", nodeColors);
+    // console.log("🎯 nodeId:", actualNodeId);
+    // console.log("🎯 activeColor:", activeColor);
+    // console.log("🎯 nodeColors:", nodeColors);
 
     return (
         <Container isUser={isUser}>
