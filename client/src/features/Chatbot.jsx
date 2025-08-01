@@ -28,16 +28,18 @@ const InputContainer = styled.div`
   height: 40px;
   align-items: center;
   justify-content: center;
-  padding: 5px 13px 5px 20px;
+  padding: 7px 13px 7px 20px;
   border-radius: 100px;
-  background-color: #f0f0f0;
+  border: 1px solid rgba(240, 240, 240);
+  background-color: #ffffff;
+  box-shadow: 0px 8px 24px rgba(149, 157, 165, 0.2);
 `;
 
 const Input = styled.input`
   height: 20px;
   flex: 1;
   border: none;
-  background-color: #f0f0f0;
+  background-color: #ffffff;
   margin-right: 10px;
   font-size: 16px;
   font-family: "Pretendard";
@@ -51,8 +53,8 @@ const Button = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 35px;
-  height: 35px;
+  width: 40px;
+  height: 40px;
   border: none;
   border-radius: 50%;
   background-color: #373D47;
@@ -63,21 +65,31 @@ const ArrowContainer = styled.div`
   position: fixed;
   bottom: 100px;
   right: 20px;
+  margin: 0px 100px 50px 0px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 7px;
 `;
 
 const ArrowButton = styled.button`
-  width: 40px;
-  height: 40px;
-  background-color: #48bb78;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 50px;
+  background-color: #ffffff;
   color: white;
-  border: none;
+  border: 1px solid rgba(217, 217, 217, 0.8);
   border-radius: 50%;
   cursor: pointer;
-  opacity: ${(props) => (props.disabled ? 0.5 : 1)};
+  opacity: ${(props) => (props.disabled ? 0.2 : 1)};
   pointer-events: ${(props) => (props.disabled ? "none" : "auto")};
+  box-shadow: 0 4px 4px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+
+  &:hover {
+    background-color: #f5f5f5;
+  }
 `;
 
 const SaveButton = styled.button`
@@ -274,10 +286,10 @@ function Chatbot() {
             return (
               <>
                 <ArrowButton onClick={() => moveToMessage(-1)} disabled={currentIndex <= 0}>
-                  ↑
+                  <span className="material-symbols-outlined md-black-font md-30" style={{ userSelect: "none" }}>keyboard_arrow_up</span>
                 </ArrowButton>
                 <ArrowButton onClick={() => moveToMessage(1)} disabled={currentIndex >= sortedDialogs.length - 1}>
-                  ↓
+                  <span className="material-symbols-outlined md-black-font md-30" style={{ userSelect: "none" }}>keyboard_arrow_down</span>
                 </ArrowButton>
               </>
             );
@@ -295,7 +307,7 @@ function Chatbot() {
           placeholder="메세지 입력하기"
         />
         <Button onClick={handleSend}>
-          <span className="material-symbols-outlined md-white md-24">arrow_upward</span>
+          <span className="material-symbols-outlined md-white md-24" style={{ userSelect: "none" }}>arrow_upward</span>
         </Button>
       </InputContainer>
     </ChatContainer>
