@@ -191,8 +191,11 @@ function Graph() {
           transition: "opacity 0.2s ease",
         },
         data: {
+          sourceId: node.parent,
+          targetId: node.id,
           isActive,
           contextMode,
+          activeNodeIds,
         },
         labelStyle: {
           fontWeight: 600,

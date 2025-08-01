@@ -40,8 +40,13 @@ const CustomEdge = ({
   data,
 }) => {
 
-  const isActive = data?.isActive || false;
   const contextMode = data?.contextMode || false;
+  const sourceId = data?.sourceId;
+  const targetId = data?.targetId;
+  const activeNodeIds = data?.activeNodeIds || [];
+
+  const isTrulyActive = activeNodeIds.includes(sourceId) && activeNodeIds.includes(targetId);
+
   const yOffset = 4; 
 
   // 베지어 경로와 중앙점 계산
@@ -56,8 +61,8 @@ const CustomEdge = ({
 
 const edgeStyle = {
   ...style,
-  opacity: contextMode && !isActive ? 0.2 : 1,  // 🔥 Context 모드일 때 비활성화 간선 투명도
-  transition: "opacity 0.2s ease",  // 투명도 전환 애니메이션
+  opacity: contextMode ? (isTrulyActive ? 1 : 0.2) : 1,
+  transition: "opacity 0.2s ease",
 };
 
   return (
@@ -68,7 +73,7 @@ const edgeStyle = {
           style={{
             left: `${labelX}px`,
             top: `${labelY}px`,
-            opacity: style.opacity,  // ✅ Graph에서 설정한 투명도 사용
+            opacity: edgeStyle.opacity,  // ✅ Graph에서 설정한 투명도 사용
           }}
         >
           {label}
