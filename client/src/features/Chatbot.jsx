@@ -267,12 +267,21 @@ function Chatbot() {
       </MessagesContainer>
       {activeDialogNumbers.length > 0 && (
         <ArrowContainer>
-          <ArrowButton onClick={() => moveToMessage(-1)} disabled={currentIndex <= 0}>
-            ↑
-          </ArrowButton>
-          <ArrowButton onClick={() => moveToMessage(1)} disabled={currentIndex >= activeDialogNumbers.length - 1}>
-            ↓
-          </ArrowButton>
+          {(() => {
+            const sortedDialogs = [...activeDialogNumbers].sort((a, b) => a - b);
+            const currentIndex = sortedDialogs.indexOf(currentScrolledDialog);
+
+            return (
+              <>
+                <ArrowButton onClick={() => moveToMessage(-1)} disabled={currentIndex <= 0}>
+                  ↑
+                </ArrowButton>
+                <ArrowButton onClick={() => moveToMessage(1)} disabled={currentIndex >= sortedDialogs.length - 1}>
+                  ↓
+                </ArrowButton>
+              </>
+            );
+          })()}
         </ArrowContainer>
       )}
           <SaveButton onClick={handleSaveState}>💾 저장</SaveButton>
