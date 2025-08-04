@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
-import Chatbot from "../features/Chatbot.jsx";
-import Graph from "../features/Graph.jsx";
+import Chatbot from "../features/main/Chatbot.jsx";
+import Graph from "../features/main/Graph.jsx";
 
 const Container = styled.div`
   display: flex;

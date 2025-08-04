@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import styled from "styled-components";
 import { useDispatch, useSelector } from "react-redux";
-import { sendMessageToApi } from "../services/chatbotService.js";
-import DialogBox from "../components/textBox/DialogBox.jsx";
-import { setCurrentScrolledDialog, resetState} from "../redux/slices/nodeSlice";
-import { store } from "../redux/store.js"; 
+import { sendMessageToApi } from "../../services/chatbotService.js";
+import DialogBox from "../../components/textBox/DialogBox.jsx";
+import { setCurrentScrolledDialog, resetState} from "../../redux/slices/nodeSlice.js";
+import { store } from "../../redux/store.js"; 
 
 const ChatContainer = styled.div`
   display: flex;
