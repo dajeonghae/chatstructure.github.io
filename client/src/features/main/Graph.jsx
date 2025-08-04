@@ -3,12 +3,13 @@ import styled from "styled-components";
 import ReactFlow, { useNodesState, useEdgesState, Background, Controls, BezierEdge } from "reactflow";
 import 'reactflow/dist/style.css';
 import { useSelector, useDispatch } from "react-redux";
-import ContextButton from "../components/button/ContextButton";
-import CustomEdge from "../components/graph/CustomEdge";
-import CustomTooltipNode from "../components/tooltip-node/TooltipNode";
-import ToggleButton from "../components/button/ToggleButton";
-import { toggleContextMode } from "../redux/slices/modeSlice";
-import { setNodeColors } from "../redux/slices/nodeSlice";
+import ContextButton from "../../components/button/ContextButton";
+import VisButton from "../../components/button/VisButton";
+import CustomEdge from "../../components/graph/CustomEdge";
+import CustomTooltipNode from "../../components/tooltip-node/TooltipNode";
+import ToggleButton from "../../components/button/ToggleButton";
+import { toggleContextMode } from "../../redux/slices/modeSlice";
+import { setNodeColors } from "../../redux/slices/nodeSlice";
 
 const edgeTypes = {
   custom: CustomEdge,
@@ -40,6 +41,13 @@ const ToggleContainer = styled.div`
   position: absolute;
   top: 70px;
   left: 20px;
+  z-index: 10;
+`;
+
+const VisContainer = styled.div`
+  position: absolute;
+  top: 20px;
+  right: 20px;
   z-index: 10;
 `;
 
@@ -220,6 +228,9 @@ function Graph() {
       <ToggleContainer>
         <ToggleButton active={contextMode} onToggle={handleToggle} />
       </ToggleContainer>
+      <VisContainer>
+        <VisButton />
+      </VisContainer>
       <ContextButton />
       <ReactFlow
         nodes={nodes}

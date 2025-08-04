@@ -7,6 +7,7 @@ const modeSlice = createSlice({
     treeMode: false,  // 🔥 Tree 모드 상태 추가
     contextMode: false,
     hoveredNodeIds: [],
+    isVisMode: false,
   },
 
   reducers: {
@@ -32,8 +33,12 @@ const modeSlice = createSlice({
     clearHoveredNodes: (state) => {
       state.hoveredNodeIds = [];
     },
+
+    setVisMode: (state, action) => {
+      state.isVisMode = action.payload;
+    },
   },
 });
 
-export const { toggleLinearMode, toggleTreeMode, toggleContextMode, setHoveredNodes, clearHoveredNodes } = modeSlice.actions;
+export const { toggleLinearMode, toggleTreeMode, toggleContextMode, setHoveredNodes, clearHoveredNodes, setVisMode } = modeSlice.actions;
 export default modeSlice.reducer;
