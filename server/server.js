@@ -160,7 +160,7 @@ app.post('/api/update-graph', async (req, res) => {
 
   try {
     const response = await retryRequest(() => openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5',
       messages: [
         {
           role: 'system',
@@ -186,7 +186,7 @@ app.post('/api/update-graph', async (req, res) => {
         { role: 'user', content: `현재 존재하는 노드 목록: ${JSON.stringify(existingKeywords)}` },
         { role: 'user', content: `최근 대화 내용: ${JSON.stringify({ userMessage, gptMessage })}` }
       ],
-      max_tokens: 1200,
+      max_completion_tokens: 1200,
       response_format: { type: "json_object" } 
     }));
 
