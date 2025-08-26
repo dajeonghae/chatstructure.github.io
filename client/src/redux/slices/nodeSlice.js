@@ -10,6 +10,7 @@ const nodeSlice = createSlice({
       root: {
         id: "root",
         keyword: "Root",
+        centroid: null,
         parent: null,
         relation: null,
         children: [],

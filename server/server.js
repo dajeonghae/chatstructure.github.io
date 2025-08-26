@@ -142,6 +142,13 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+
+app.post('/api/embedding', async (req, res) => {
+  const { userMessage, gptMessage } = req.body;
+
+});
+
+
 app.post('/api/update-graph', async (req, res) => {  
   const { nodes, userMessage, gptMessage } = req.body;  
   const safeNodes = nodes || {};

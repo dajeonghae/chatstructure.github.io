@@ -32,7 +32,15 @@ export const sendMessageToApi = (input, previousMessages) => async (dispatch, ge
     const { message: gptResponse } = response.data;
     console.log("📌 GPT 응답:", { gptResponse });
 
-    // 🔹 Step 2: /api/update-graph 호출하여 keyword, parentNodeId, relation 받아오기
+
+    // 🔹 Step 2: /api/embedding 호출하여 각 대화 별 센트로이드 생성
+    const newConversationCentroid = await axios.post("http://localhost:8080/api/embedding", {
+      userMessage: input,
+      gptMessage: gptResponse,
+    });
+
+
+    // 🔹 Step 3
     const parentNode = await axios.post("http://localhost:8080/api/update-graph", {
       nodes: filteredNodes,
       userMessage: input,
