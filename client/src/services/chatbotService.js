@@ -1,5 +1,5 @@
 import axios from "axios";
-import { addOrUpdateNode, setParentNode } from "../redux/slices/nodeSlice";
+import { addOrUpdateNode, setParentNode, applyEmbeddingUpdate } from "../redux/slices/nodeSlice";
 
 // 🟢 API 요청을 처리하는 함수
 export const sendMessageToApi = (input, previousMessages) => async (dispatch, getState) => {
@@ -33,85 +33,96 @@ export const sendMessageToApi = (input, previousMessages) => async (dispatch, ge
     console.log("📌 GPT 응답:", { gptResponse });
 
 
-    // 🔹 Step 2: /api/embedding 호출하여 각 대화 별 센트로이드 생성
-    const newConversationCentroid = await axios.post("http://localhost:8080/api/embedding", {
+    // 2) Embedding + 후보/판정 (nodes 함께 전달)
+    const embRes = await axios.post("http://localhost:8080/api/embedding", {
       userMessage: input,
       gptMessage: gptResponse,
+      nodes: filteredNodes
     });
-
+    const { embedding, top3, decision, attachNodeId, updatedNode } = embRes.data;
 
     // 🔹 Step 3
+    // 3-a) 편입이면 해당 노드에 바로 추가 + 센트로이드/통계 갱신
+    if (decision === "attach" && attachNodeId && filteredNodes[attachNodeId]) {
+      dispatch(addOrUpdateNode({
+        id: attachNodeId,
+        keyword: filteredNodes[attachNodeId].keyword,
+        userMessage: input,
+        gptMessage: gptResponse,
+        contextMode
+      }));
+      if (updatedNode) {
+        dispatch(applyEmbeddingUpdate({
+          id: updatedNode.id,
+          newCentroid: updatedNode.newCentroid,
+          newCount: updatedNode.newCount,
+          newSimStats: updatedNode.newSimStats
+        }));
+      }
+      return gptResponse;
+    }
+
+
+    // 3-b) 새 노드인 경우: LLM으로 라벨/부모/관계 정리(top3도 전달)
     const parentNode = await axios.post("http://localhost:8080/api/update-graph", {
       nodes: filteredNodes,
       userMessage: input,
       gptMessage: gptResponse,
+      top3
     });
-
     const { keyword, parentNodeId, relation } = parentNode.data;
-    console.log(`📌 추출된 키워드: ${keyword}`);
-    console.log(`📌 ${keyword}의 부모 노드: ${parentNodeId}, 관계: ${relation}`);
 
-    // 🔹 Step 3: 동일한 키워드가 이미 있는지 체크
-    const existingNodeId = Object.keys(filteredNodes).find(
-      (nodeId) => filteredNodes[nodeId].keyword === keyword
-    );
 
-    if (existingNodeId) {
-      console.log(`✅ 기존 키워드(${keyword}) 발견 - ${existingNodeId} 노드에 대화 추가`);
 
-      // 🔹 기존 노드에 dialog 추가
-      dispatch(
-        addOrUpdateNode({
+  // 동일 키워드 재사용 체크 (선택)
+      const existingNodeId = Object.keys(filteredNodes).find(
+        (nodeId) => filteredNodes[nodeId].keyword === keyword
+      );
+      if (existingNodeId) {
+        dispatch(addOrUpdateNode({
           id: existingNodeId,
           keyword,
           userMessage: input,
           gptMessage: gptResponse,
           contextMode,
-        })
-      );
+        }));
+        return gptResponse;
+      }
 
-      console.log("🔄 업데이트된 Redux 상태 (기존 키워드 추가 후):", getState().node.nodes);
-      return gptResponse;
-    }
+      // 새 노드 ID 생성
+      const generateNodeId = (parentNodeId, nodes) => {
+        const childIds = nodes[parentNodeId]?.children || [];
+        let maxSuffix = 0;
+        childIds.forEach((childId) => {
+          const suffix = parseInt(childId.split("-").pop(), 10);
+          if (!isNaN(suffix)) maxSuffix = Math.max(maxSuffix, suffix);
+        });
+        return `${parentNodeId}-${maxSuffix + 1}`;
+      };
 
-    // 🔥 새로운 노드 ID를 만드는 함수
-    const generateNodeId = (parentNodeId, nodes) => {
-      const childIds = nodes[parentNodeId]?.children || [];
-      let maxSuffix = 0;
+      const updatedNodes = getState().node.nodes;
+      const parent = (parentNodeId && updatedNodes[parentNodeId]) ? parentNodeId : "root";
+      const newNodeId = generateNodeId(parent, updatedNodes);
 
-      // 현재 자식 노드 중 가장 큰 번호를 찾음
-      childIds.forEach((childId) => {
-        const suffix = parseInt(childId.split("-").pop(), 10);
-        if (!isNaN(suffix)) {
-          maxSuffix = Math.max(maxSuffix, suffix);
-        }
-      });
-
-      return `${parentNodeId}-${maxSuffix + 1}`;
-    };
-
-    const updatedNodes = getState().node.nodes;
-    const newNodeId = generateNodeId(parentNodeId, updatedNodes);
-
-    dispatch(
-      addOrUpdateNode({
+      // ✅ 새 노드 생성: centroid/count/simStats 초기화
+      dispatch(addOrUpdateNode({
         id: newNodeId,
         keyword,
         userMessage: input,
         gptMessage: gptResponse,
         contextMode,
-      })
-    );
+      centroid: embedding,
+      count: 1,
+      simStats: { n: 0, mean: 0, m2: 0, std: 0 }
+      }));
 
-    if (parentNodeId && updatedNodes[parentNodeId]) {
-      dispatch(setParentNode({ nodeId: newNodeId, parentId: parentNodeId, relation }));
-      console.log(`✅ ${newNodeId}이(가) ${parentNodeId}에 "${relation}" 관계로 연결됨.`);
+      if (parent && updatedNodes[parent]) {
+        dispatch(setParentNode({ nodeId: newNodeId, parentId: parent, relation }));
+      }
+
+      return gptResponse;
+    } catch (error) {
+      console.error("Error sending message:", error);
+      throw error;
     }
-
-    console.log("🔄 업데이트된 Redux 상태 (새로운 키워드 추가 후):", getState().node.nodes);
-    return gptResponse;
-  } catch (error) {
-    console.error("Error sending message:", error);
-    throw error;
-  }
-};
+  };

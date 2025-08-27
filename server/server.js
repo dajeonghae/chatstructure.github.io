@@ -1,3 +1,111 @@
+// === Embedding & Similarity utils ===
+const EMBEDDING_MODEL = "text-embedding-3-small";
+
+// 튜닝 파라미터(원하면 바꿔 사용)
+const DEFAULT_THRESHOLD = 0.72;   // 노드별 통계가 충분치 않을 때 기본 통과 기준
+const THRESHOLD_FLOOR   = 0.65;   // 임계치 하한
+const TOP2_MARGIN       = 0.05;   // Top-1 과 Top-2 최소 차이(주제전환 아님 판정에 필요)
+const K_STD             = 0.25;   // 적응 임계치: mean - K*std
+
+function cosineSimilarity(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  if (na === 0 || nb === 0) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+function adaptiveThreshold(simStats) {
+  if (!simStats || !Number.isFinite(simStats.mean) || !Number.isFinite(simStats.std) || simStats.n < 3) {
+    return DEFAULT_THRESHOLD;
+  }
+  const t = simStats.mean - K_STD * simStats.std;
+  return Math.max(THRESHOLD_FLOOR, t);
+}
+
+// 러닝 평균/분산(Welford)
+function welfordUpdate(stats, x) {
+  let n = (stats?.n) | 0;
+  let mean = stats?.mean || 0;
+  let m2 = stats?.m2 || 0;
+  n += 1;
+  const delta = x - mean;
+  mean += delta / n;
+  const delta2 = x - mean;
+  m2 += delta * delta2;
+  const variance = n > 1 ? (m2 / (n - 1)) : 0;
+  return { n, mean, m2, std: Math.sqrt(variance) };
+}
+
+/** ---------------- LLM output helpers ---------------- */
+// Chat Completions + Responses API 모두 커버
+function extractAssistantText(resp) {
+  try {
+    // 1) Responses API 최우선: output_text가 있으면 그대로 사용
+    if (typeof resp?.output_text === 'string' && resp.output_text.trim()) {
+      return resp.output_text.trim();
+    }
+
+    // 2) Responses API: output 배열 검사
+    if (Array.isArray(resp?.output)) {
+      // message 아이템 텍스트
+      for (const item of resp.output) {
+        if (item?.type === 'message') {
+          // content가 배열일 수 있음
+          const parts = item.content || [];
+          for (const p of parts) {
+            const t = p?.text ?? p?.content ?? p?.value;
+            if (typeof t === 'string' && t.trim()) return t.trim();
+          }
+        }
+        // function_call 아이템 arguments
+        if (item?.type === 'function_call' && typeof item?.arguments === 'string' && item.arguments.trim()) {
+          return item.arguments.trim();
+        }
+        // custom_tool_call 입력
+        if (item?.type === 'custom_tool_call' && typeof item?.input === 'string' && item.input.trim()) {
+          return item.input.trim();
+        }
+      }
+    }
+
+    // 3) Chat Completions: content
+    const msg = resp?.choices?.[0]?.message;
+    if (typeof msg?.content === 'string' && msg.content.trim()) {
+      return msg.content.trim();
+    }
+    // 4) Chat Completions: tool_calls.function.arguments
+    if (Array.isArray(msg?.tool_calls) && msg.tool_calls.length) {
+      const args = msg.tool_calls[0]?.function?.arguments;
+      if (typeof args === 'string' && args.trim()) return args.trim();
+    }
+    // 5) Chat Completions: function_call.arguments (구버전 호환)
+    if (msg?.function_call?.arguments) {
+      const s = String(msg.function_call.arguments).trim();
+      if (s) return s;
+    }
+  } catch {
+    // ignore
+  }
+  return '';
+}
+
+// 코드블록/앞뒤 텍스트 섞여도 { ... } JSON만 안전 파싱
+function safeParseJson(s) {
+  if (!s) return null;
+  try { return JSON.parse(s); } catch {}
+  const i = s.indexOf('{'), j = s.lastIndexOf('}');
+  if (i !== -1 && j !== -1 && j > i) {
+    try { return JSON.parse(s.slice(i, j + 1)); } catch {}
+  }
+  return null;
+}
+
+
 require('dotenv').config();
 const express = require('express');
 const path = require('path'); 
@@ -16,19 +124,16 @@ const openai = new OpenAI({
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 🟢 재시도 함수 - 응답 비어있을 때도 재시도
+// 🟢 재시도 함수 - (툴콜까지 포함해) 비어있지 않은 응답만 통과
 async function retryRequest(callback, maxRetries = 5) {
   let attempts = 0;
   while (attempts < maxRetries) {
     try {
       const response = await callback();
-      const gptResult = response?.choices?.[0]?.message?.content?.trim();
-      
-      // 응답 비어 있는 경우 다시 요청
-      if (!gptResult) {
+      const text = extractAssistantText(response);
+      if (!text) {
         throw new Error("GPT 응답이 비어 있음 - 재시도");
       }
-
       return response;
     } catch (error) {
       attempts++;
@@ -144,93 +249,143 @@ app.post('/api/chat', async (req, res) => {
 
 
 app.post('/api/embedding', async (req, res) => {
-  const { userMessage, gptMessage } = req.body;
+  const { userMessage, gptMessage, nodes = {} } = req.body;
 
+  const text = `[User] ${userMessage}\n[Assistant] ${gptMessage}`;
+  try {
+    const embResp = await openai.embeddings.create({
+      model: EMBEDDING_MODEL,
+      input: text
+    });
+    const convVec = embResp.data[0].embedding;
+
+    // 후보 생성(centroid 있는 노드만)
+    const candidates = Object.values(nodes)
+      .filter(n => Array.isArray(n.centroid) && n.centroid.length > 0)
+      .map(n => {
+        const sim = cosineSimilarity(convVec, n.centroid);
+        const passThreshold = adaptiveThreshold(n.simStats);
+        const count = n.count ?? (n.dialog ? Object.keys(n.dialog).length : 0);
+        return {
+          id: n.id,
+          keyword: n.keyword,
+          similarity: Number(sim.toFixed(6)),
+          passThreshold: Number(passThreshold.toFixed(6)),
+          passed: sim >= passThreshold,
+          count,
+          simStats: n.simStats || null
+        };
+      })
+      .sort((a, b) => b.similarity - a.similarity);
+
+    const top3 = candidates.slice(0, 3);
+    const top1 = top3[0];
+    const top2 = top3[1];
+
+    let decision = 'new_node';
+    let attachNodeId = null;
+
+    if (top1 && top1.id !== 'root') {
+      const margin = top1.similarity - (top2?.similarity ?? 0);
+      if (top1.passed && margin >= TOP2_MARGIN) {
+        decision = 'attach';
+        attachNodeId = top1.id;
+      }
+    }
+
+    // 편입 시, 새 센트로이드/통계 계산해 함께 반환(프론트에서 즉시 반영)
+    let updatedNode = null;
+    if (decision === 'attach') {
+      const node = nodes[attachNodeId];
+      const count = (node.count ?? (node.dialog ? Object.keys(node.dialog).length : 0)) || 0;
+
+      if (Array.isArray(node.centroid) && node.centroid.length === convVec.length) {
+        const newCentroid = node.centroid.map((v, i) => (v * count + convVec[i]) / (count + 1));
+        const newSimStats = welfordUpdate(node.simStats || { n: 0, mean: 0, m2: 0 }, top1.similarity);
+
+        updatedNode = {
+          id: attachNodeId,
+          newCentroid,
+          newCount: count + 1,
+          newSimStats
+        };
+      }
+    }
+
+    res.json({
+      embedding: convVec,
+      top3,
+      decision,
+      attachNodeId,
+      updatedNode
+    });
+  } catch (e) {
+    console.error('❌ /api/embedding error', e);
+    res.status(500).json({ error: 'Embedding failed' });
+  }
 });
 
 
+// server.js — /api/update-graph 라우트 전체 교체
 app.post('/api/update-graph', async (req, res) => {  
-  const { nodes, userMessage, gptMessage } = req.body;  
+  const { nodes, userMessage, gptMessage, top3 = [] } = req.body;  
   const safeNodes = nodes || {};
   const existingKeywords = Object.values(safeNodes).map(node => node.keyword);
 
-  // ✅ safeNodes에서 dialog 등 불필요한 필드 제거 (id, keyword만 유지)
   const simplifiedNodes = Object.fromEntries(
-    Object.entries(safeNodes).map(([id, node]) => {
-      return [id, { id, keyword: node.keyword }];
-    })
+    Object.entries(safeNodes).map(([id, node]) => [id, { id, keyword: node.keyword }])
   );
-
-  console.log('📌 업데이트 요청 받음');
-  console.log('📋 현재 노드 목록:', existingKeywords);
-  console.log('🗺️ 전달된 노드 데이터:', JSON.stringify(simplifiedNodes, null, 2));
 
   try {
     const response = await retryRequest(() => openai.chat.completions.create({
-      model: 'gpt-5',
+      model: 'gpt-4o',
       messages: [
         {
           role: 'system',
           content: `
-          다음 정보를 기반으로 사용자의 대화 키워드도 추출하고,
-          그래프 업데이트 정보를 생성하세요.
-          
-          1. 현재 그래프 상태와 존재하는 노드 목록을 참고해서, 최근 대화 내용이 어떤 노드(키워드)에 들어가야 하는지 판단하시오
-          2. 판단한 근거로 최근 대화 내용의 키워드를 정한 다음, 그래프 내 어디에 연결되어야 할지 판단하고, 가장 연관된 부모 노드를 찾아 관계도 설정하세요.
-          3. 관계는 한 단어 또는 짧은 구로 표현하세요.
+너는 그래프 라벨러다. 아래 정보를 보고 "새 노드"일 때만 라벨/부모/관계를 정리한다.
+- Top-3 후보(유사도/통과여부 포함)를 부모 선택 참고자료로 사용하라.
+- parentNodeId는 Top-3 중에서 고르되, 적절치 않으면 "null"을 반환한다.
 
-          반드시 아래 형식으로 응답하세요:
-          \`\`\`json
-          {
-            "keyword": "추출된 키워드",
-            "parentNodeId": "부모 노드 ID",
-            "relation": "부모와의 관계"
-          }
-          \`\`\`
-        `
+반드시 이 JSON 스키마로 답하라:
+\`\`\`json
+{
+  "keyword": "추출된 키워드",
+  "parentNodeId": "부모 노드 ID 또는 null",
+  "relation": "부모와의 관계(한 단어 또는 짧은 구)"
+}
+\`\`\`
+          `
         },
-        { role: 'user', content: `현재 그래프 상태: ${JSON.stringify(simplifiedNodes)}` },
-        { role: 'user', content: `현재 존재하는 노드 목록: ${JSON.stringify(existingKeywords)}` },
-        { role: 'user', content: `최근 대화 내용: ${JSON.stringify({ userMessage, gptMessage })}` }
+        { role: 'user', content: `최근 대화 요약 후보: ${JSON.stringify({ userMessage, gptMessage })}` },
+        { role: 'user', content: `Top-3 후보 노드: ${JSON.stringify(top3)}` },
+        { role: 'user', content: `현재 그래프 상태(간략): ${JSON.stringify(simplifiedNodes)}` },
+        { role: 'user', content: `현재 존재하는 키워드: ${JSON.stringify(existingKeywords)}` }
       ],
-      max_completion_tokens: 1200,
-      response_format: { type: "json_object" } 
+      max_completion_tokens: 600,
+      response_format: { type: "json_object" }
     }));
 
-    console.log("\n📝 [GPT 응답 원본 - /api/update-graph]:", response.choices[0].message.content);
-     
-    let gptResult = response.choices[0]?.message?.content?.trim();
-    
-    if (!gptResult) {
-      console.error("❌ GPT 응답이 비어 있음! 재시도 중...");
-      throw new Error("Empty GPT response");
-    }
+    const raw = extractAssistantText(response);
+    if (!raw) throw new Error("LLM returned empty text");
+    const parsed = safeParseJson(raw) || {};
 
-    let parsedResult;
-    try {
-      parsedResult = JSON.parse(gptResult);
-    } catch (parseError) {
-      console.error("❌ JSON 파싱 오류:", parseError);
-      throw new Error("GPT 응답을 JSON으로 변환하는 중 오류 발생");
-    }
+    let keyword = (parsed.keyword ?? "").trim() || "???";
+    let parentNodeId = parsed.parentNodeId === null ? null : (parsed.parentNodeId ?? "").trim();
+    let relation = (parsed.relation ?? "").trim() || "관련";
 
-    let keyword = parsedResult.keyword?.trim() || "???";
-    let parentNodeId = parsedResult.parentNodeId?.trim() || "root";
-    let relation = parsedResult.relation?.trim() || "관련";
-
-    if (!Object.keys(safeNodes).includes(parentNodeId)) {
+    // parentNodeId 유효성 보정
+    if (parentNodeId && !Object.keys(safeNodes).includes(parentNodeId)) {
       parentNodeId = Object.keys(safeNodes).find(key => keyword.includes(safeNodes[key].keyword)) || "root";
     }
 
-    console.log(`✅ 키워드: ${keyword}, 선택된 부모 노드: ${parentNodeId}, 관계: ${relation}`);
-    
     res.json({ keyword, parentNodeId, relation });
-
   } catch (error) {
-    console.error("❌ Error in Graph Update:", error);
+    console.error("❌ Error in Graph Update:", error?.response?.data || error.message || error);
     res.status(500).json({ error: "서버 내부 오류 발생" });
   }
 });
+
 
 app.listen(8080, function () {
   console.log('🚀 Server is listening on port 8080');
