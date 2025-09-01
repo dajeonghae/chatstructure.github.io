@@ -11,12 +11,15 @@ const nodeSlice = createSlice({
         id: "root",
         keyword: "Root",
         centroid: null,
+        count: 0,
+        simStats: null, 
         parent: null,
         relation: null,
         children: [],
         dialog: {
           0: { userMessage: "Root", gptMessage: "Root Node" }
         },
+        createdAt: 0,
       },
     },
     activeNodeIds: [],
@@ -135,7 +138,10 @@ const nodeSlice = createSlice({
     },
 
     addOrUpdateNode: (state, action) => {
-      const { id, keyword, userMessage, gptMessage, contextMode, parentNodeId } = action.payload;
+        const {
+          id, keyword, userMessage, gptMessage, contextMode,
+          centroid, count, simStats
+        } = action.payload;
 
       if (!state.nodes[id]) {
         // const parent  = parentNodeId || "root";
@@ -147,6 +153,14 @@ const nodeSlice = createSlice({
           // relation: "관련",
           children: [],
           dialog: {},
+          centroid: centroid ?? null,
+          count: Number.isFinite(count) ? count : 0,
+          simStats: simStats ?? null,
+          parent: state.nodes[id]?.parent ?? undefined,
+          relation: state.nodes[id]?.relation ?? undefined,
+          children: [],
+          dialog: {},
+          createdAt: Date.now()
         };
         
         // if (state.nodes[parent]            // 안전 체크
@@ -180,9 +194,20 @@ const nodeSlice = createSlice({
       if (state.nodes[nodeId] && state.nodes[parentId]) {
         state.nodes[nodeId].parent = parentId;
         state.nodes[nodeId].relation = relation;
-        state.nodes[parentId].children.push(nodeId);
+      if (!state.nodes[parentId].children.includes(nodeId)) {
+         state.nodes[parentId].children.push(nodeId);
+       }
       }
     },
+
+   // ✅ 편입(attach) 시 서버가 계산해 준 새 센트로이드/통계를 반영
+   applyEmbeddingUpdate: (state, action) => {
+     const { id, newCentroid, newCount, newSimStats } = action.payload;
+     if (!state.nodes[id]) return;
+     if (Array.isArray(newCentroid)) state.nodes[id].centroid = newCentroid;
+     if (Number.isFinite(newCount)) state.nodes[id].count = newCount;
+     if (newSimStats) state.nodes[id].simStats = newSimStats;
+   },
 
     // 🔥 현재 스크롤된 대화 번호 설정 액션 추가
     setCurrentScrolledDialog: (state, action) => {
@@ -205,5 +230,5 @@ const nodeSlice = createSlice({
   },
 });
 
-export const { toggleActiveDialog, toggleActiveNode, addOrUpdateNode, setParentNode, setCurrentScrolledDialog, resetState } = nodeSlice.actions;
+export const { toggleActiveDialog, toggleActiveNode, addOrUpdateNode, setParentNode, applyEmbeddingUpdate, setCurrentScrolledDialog, resetState } = nodeSlice.actions;
 export default nodeSlice.reducer;
