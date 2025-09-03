@@ -8,6 +8,7 @@ const Container = styled.div`
   flex-direction: row;
   height: 100vh;
   width: 100%;
+  overflow: hidden;
 `;
 
 const ChatSection = styled.div`
@@ -33,11 +34,12 @@ const ChatContainer = styled.div`
 
 const GraphContainer = styled.div`
   display: flex;
-  width: 90%;
+  width: 92%;
   height: 90%;
-  border-radius: 20px;
-  border: 1px solid rgba(217, 217, 217, 0.5);
-  background-color: rgba(226, 226, 226, 0.1);
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 16px 0px 16px;
+  box-sizing: border-box; 
 `;
 
 function Main() {
