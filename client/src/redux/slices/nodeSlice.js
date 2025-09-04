@@ -19,6 +19,7 @@ const nodeSlice = createSlice({
         dialog: {
           0: { userMessage: "Root", gptMessage: "Root Node" }
         },
+        keywords: [],
         createdAt: 0,
       },
     },
@@ -160,7 +161,8 @@ const nodeSlice = createSlice({
           relation: state.nodes[id]?.relation ?? undefined,
           children: [],
           dialog: {},
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          keywords: [],
         };
         
         // if (state.nodes[parent]            // 안전 체크
@@ -200,6 +202,12 @@ const nodeSlice = createSlice({
       }
     },
 
+    setNodeKeywords: (state, action) => {
+      const { id, keywords } = action.payload;
+      if (!state.nodes[id]) return;
+      state.nodes[id].keywords = keywords;
+    },
+
    // ✅ 편입(attach) 시 서버가 계산해 준 새 센트로이드/통계를 반영
    applyEmbeddingUpdate: (state, action) => {
      const { id, newCentroid, newCount, newSimStats } = action.payload;
@@ -230,5 +238,5 @@ const nodeSlice = createSlice({
   },
 });
 
-export const { toggleActiveDialog, toggleActiveNode, addOrUpdateNode, setParentNode, applyEmbeddingUpdate, setCurrentScrolledDialog, resetState } = nodeSlice.actions;
+export const { toggleActiveDialog, toggleActiveNode, addOrUpdateNode, setParentNode, applyEmbeddingUpdate, setCurrentScrolledDialog, resetState, setNodeKeywords } = nodeSlice.actions;
 export default nodeSlice.reducer;

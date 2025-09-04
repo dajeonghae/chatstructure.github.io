@@ -64,12 +64,12 @@ const MessageBubble = styled.div`
         if (props.isActive) {
           if (props.isUser) {
             return props.isScrolled
-                ? `${props.activeColor}88` // 53%
-                : `${props.activeColor}66`; // 40%
+                ? `${props.activeColor}66` // 53%
+                : `${props.activeColor}44`; // 40%
           } else {
             return props.isScrolled
-            ? `${props.activeColor}05` // AI: 적당히 투명하게
-            : `${props.activeColor}05`; // 덜 강조
+            ? `${props.activeColor}0A` // AI: 적당히 투명하게
+            : `${props.activeColor}0A`; // 덜 강조
             }
         }
     
@@ -84,7 +84,7 @@ const MessageBubble = styled.div`
     border: ${(props) => {
         if (!props.isUser && props.isActive) {
           const color = props.activeColor || '#2C7A7B';
-          return `1.5px solid ${color}88`; // 🔥 53% 투명도
+          return `1.5px solid ${color}44`; // 🔥 53% 투명도
         }
         return props.isUser ? 'none' : '1px solid rgba(217, 217, 217, 0.5)';
       }};

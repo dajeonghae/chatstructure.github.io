@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { sendMessageToApi } from "../../services/chatbotService.js";
 import DialogBox from "../../components/textBox/DialogBox.jsx";
 import { setCurrentScrolledDialog, resetState} from "../../redux/slices/nodeSlice.js";
+import { parseConversationHistory } from "../../utils/parseConversationHistory.js";
 import { store } from "../../redux/store.js"; 
 
 const ChatContainer = styled.div`
@@ -258,7 +259,71 @@ function Chatbot() {
       handleSend();
     }
   };
-  
+
+useEffect(() => {
+  const onReplay = async (e) => {
+    const raw = e?.detail?.text ?? "";
+    if (!raw.trim()) return;
+
+    const parsed = parseConversationHistory(raw); // [{role, content}, ...]
+
+    // user/assistant 페어로 묶기
+    const pairs = [];
+    for (let i = 0; i < parsed.length; i += 2) {
+      const user = parsed[i]?.content ?? "";
+      const assistant = parsed[i + 1]?.content ?? "";
+      if (user) pairs.push({ user, assistant });
+    }
+
+    let running = [...messages];
+
+    // 시작 신호(선택: 모달에서도 보냄)
+    window.dispatchEvent(new CustomEvent("vis:start"));
+    try {
+      // 턴 순서대로 실행
+      for (const { user, assistant } of pairs) {
+        // 1) 사용자 메시지를 먼저 화면에 붙임
+        const userMessage = {
+          role: "user",
+          content: user,
+          nodeId: currentNodeId,
+          number: running.length + 1,
+        };
+        running = [...running, userMessage];
+        setMessages(running);
+
+        try {
+          // 2) 기존 파이프라인 호출(그래프 갱신 포함)
+          // assistantOverride로 모델 콜 없이 주어진 assistant 텍스트 사용
+          const gptMessageContent = await dispatch(
+            sendMessageToApi(user, running, { assistantOverride: assistant })
+          );
+
+          // 3) 어시스턴트 메시지를 화면에 붙임
+          const gptMessage = {
+            role: "assistant",
+            content: gptMessageContent,
+            nodeId: currentNodeId,
+            number: running.length + 1,
+          };
+          running = [...running, gptMessage];
+          setMessages(running);
+        } catch (err) {
+          console.error("Replay turn failed:", err);
+          // 실패해도 다음 턴 계속 진행(필요시 여기서 중단하도록 변경 가능)
+        }
+      }
+    } finally {
+      // 완료 신호(항상 보냄) → 모달이 vis:done을 받으면 닫힘
+      window.dispatchEvent(new CustomEvent("vis:done"));
+    }
+  };
+
+  window.addEventListener("chat:replay", onReplay);
+  return () => window.removeEventListener("chat:replay", onReplay);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [dispatch, currentNodeId, messages.length]);
+
   return (
     <ChatContainer>
       <MessagesContainer>
