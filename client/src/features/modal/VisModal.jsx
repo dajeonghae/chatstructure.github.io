@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import styled from "styled-components";
 import ModalPortal from "../../ModalPortal";
-import { replayConversation } from "../../services/replayService";
 import { useDispatch } from "react-redux";
 
 const ModalOverlay = styled.div`
@@ -51,7 +50,7 @@ const VisModal = ({ isOpen, onClose }) => {
   const currentNodeId = "root"; // 테스트용 기본 ID
 
 const handleReplayClick = async () => {
-  await replayConversation(text, currentNodeId);
+  window.dispatchEvent(new CustomEvent("chat:replay", { detail: { text } }));
   onClose();
 };
 

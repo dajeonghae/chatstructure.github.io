@@ -38,7 +38,7 @@ const GraphPanel = styled.div`
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
-  background: #fff;
+  background: #FCFCFC;
   border: 1px solid #eee;
   border-radius: 12px;
   overflow: hidden;

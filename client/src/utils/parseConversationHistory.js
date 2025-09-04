@@ -1,11 +1,11 @@
+// utils/parseConversationHistory.js
 export const parseConversationHistory = (text) => {
   const lines = text.split('\n');
 
-  // ✅ 첫 줄이 '나의 말:' 또는 'ChatGPT의 말:'로 시작하지 않으면 사용자 발화로 간주
+  // 첫 줄 보정: 라벨 없으면 사용자 발화로 간주
   if (
     lines.length > 0 &&
-    !lines[0].trim().startsWith('나의 말:') &&
-    !lines[0].trim().startsWith('ChatGPT의 말:')
+    !/^(나의 말:|ChatGPT의 말:|User:|Assistant:)/.test(lines[0].trim())
   ) {
     lines[0] = '나의 말: ' + lines[0].trim();
   }
@@ -14,35 +14,42 @@ export const parseConversationHistory = (text) => {
   let currentRole = null;
   let currentContent = '';
 
-  for (let line of lines) {
-    line = line.trim();
+  const isUserLabel = (line) =>
+    line.startsWith('나의 말:') || line.startsWith('User:');
+  const isAssistantLabel = (line) =>
+    line.startsWith('ChatGPT의 말:') || line.startsWith('Assistant:');
 
-    if (line.startsWith('나의 말:')) {
-      // 기존 메시지 저장
+  const stripLabel = (line) =>
+    line
+      .replace(/^나의 말:\s?/, '')
+      .replace(/^ChatGPT의 말:\s?/, '')
+      .replace(/^User:\s?/, '')
+      .replace(/^Assistant:\s?/, '')
+      .trim();
+
+  for (let raw of lines) {
+    const line = raw.trim();
+
+    if (isUserLabel(line)) {
       if (currentRole && currentContent) {
         messages.push({ role: currentRole, content: currentContent.trim() });
       }
       currentRole = 'user';
-      currentContent = line.replace('User:', '').trim();
-    } else if (line.startsWith('ChatGPT의 말:')) {
+      currentContent = stripLabel(line);
+    } else if (isAssistantLabel(line)) {
       if (currentRole && currentContent) {
         messages.push({ role: currentRole, content: currentContent.trim() });
       }
       currentRole = 'assistant';
-      currentContent = line.replace('Assistant:', '').trim();
+      currentContent = stripLabel(line);
     } else {
-      // 멀티라인 메시지일 경우
-      currentContent += '\n' + line;
+      currentContent += (currentContent ? '\n' : '') + line;
     }
   }
 
-  // 마지막 메시지도 추가
   if (currentRole && currentContent) {
     messages.push({ role: currentRole, content: currentContent.trim() });
   }
-
-  // 🔍 로그 확인
-  console.log("파싱 끝냄");
 
   return messages;
 };
