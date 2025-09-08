@@ -163,6 +163,7 @@ function Chatbot() {
   const [messages, setMessages] = useState([]); // 대화 목록을 배열로 보관
   const [input, setInput] = useState(""); // 입력창 내용을 보관
   const [currentIndex, setCurrentIndex] = useState(0);  // 현재 활성 대화 인덱스
+  const [isLoading, setIsLoading] = useState(false);
 
   const messagesEndRef = useRef(null); // 맨 아래로 스크롤
   const messageRefs = useRef([]);  // 각 메시지 <div> DOM을 배열로 저장. 특정 메시지로 스크롤할 수 있도록 함
@@ -310,7 +311,9 @@ function Chatbot() {
 
 
   const handleSend = async () => {
-    if (input.trim() === "") return;
+    if (input.trim() === "" || isLoading) return; // 로딩 중이면 실행하지 않음
+
+    setIsLoading(true); // 로딩 시작
 
     const userMessage = {
       role: "user",
@@ -335,6 +338,8 @@ function Chatbot() {
       setMessages(updatedMessages);
     } catch (error) {
       console.error("Error sending message:", error);
+    } finally {
+      setIsLoading(false); // 로딩 종료
     }
   };
 
@@ -493,15 +498,21 @@ const handleInput = (e) => {
           onChange={handleImportSnapshot}
         />
       </TopButtonContainer>
-      <InputContainer>
+      <InputContainer style={{ opacity: isLoading ? 0.5 : 1, pointerEvents: isLoading ? 'none' : 'auto' }}>
         <TextArea
           value={input}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
           placeholder="메세지 입력하기"
+          disabled={isLoading}
         />
-        <Button onClick={handleSend}>
-          <span className="material-symbols-outlined md-white md-24" style={{ userSelect: "none" }}>arrow_upward</span>
+        <Button onClick={handleSend} disabled={isLoading}>
+          <span 
+            className="material-symbols-outlined md-white md-24" 
+            style={{ userSelect: "none" }}
+          >
+            arrow_upward
+          </span>
         </Button>
       </InputContainer>
     </ChatContainer>
