@@ -130,7 +130,7 @@ const ExportButton = styled(SaveButton)`
 const ImportButton = styled(SaveButton)`
   background-color: #ffffff;
   color: #2d3748;
-  border: 1px solid #2d3748;
+  border: 1px solid  #2d3748;
 `;
 
 
