@@ -1,28 +1,20 @@
 import React from "react";
 import styled from "styled-components";
 import { COLORS } from "../../styles/colors";
-import {
-  getBezierPath,
-  EdgeLabelRenderer,
-  BaseEdge,
-} from "reactflow";
+import { getSmoothStepPath, EdgeLabelRenderer, BaseEdge } from "reactflow";
 
-// 🔥 스타일 컴포넌트
 const EdgeLabelContainer = styled.div`
   position: absolute;
   background-color: #fcfcfc;
-  padding: 2px;
-  padding-bottom: 10px;
-  border-radius: 50%;
-  font-size: 14px;
+  padding: 2px 8px; /* 공간 확보를 위해 패딩을 살짝 타이트하게 조정 */
+  border-radius: 6px;
+  font-size: 13px; /* 글자가 겹치지 않게 1px 줄임 */
   font-weight: 500;
-  color: ${COLORS.black_font};
+  color: #575A5E; /* 폰트 색상을 살짝 부드럽게 조정 */
   white-space: nowrap;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
   transform: translate(-50%, -50%);
 `;
 
@@ -39,46 +31,56 @@ const CustomEdge = ({
   markerEnd,
   data,
 }) => {
-
   const contextMode = data?.contextMode || false;
   const sourceId = data?.sourceId;
   const targetId = data?.targetId;
   const activeNodeIds = data?.activeNodeIds || [];
-
   const isTrulyActive = activeNodeIds.includes(sourceId) && activeNodeIds.includes(targetId);
 
-  const yOffset = 4; 
-
-  // 베지어 경로와 중앙점 계산
-  const [edgePath, labelX, labelY] = getBezierPath({
+  // 기본 path 계산
+  const [edgePath] = getSmoothStepPath({
     sourceX,
-    sourceY: sourceY + yOffset,
+    sourceY,
     targetX,
-    targetY: targetY + yOffset,
+    targetY,
     sourcePosition,
     targetPosition,
+    borderRadius: 16,
   });
 
-const edgeStyle = {
-  ...style,
-  opacity: contextMode ? (isTrulyActive ? 1 : 0.2) : 1,
-  transition: "opacity 0.2s ease",
-};
+  // 🔥 [수정 1] 라벨 X 좌표를 '수평선의 정확한 한가운데'로 배치
+  // React Flow의 기본 SmoothStep은 source와 target의 X좌표 중간 지점(1/2)에서 세로로 꺾입니다.
+  // 따라서 세로로 꺾인 후 타겟으로 향하는 가로선의 길이는 전체 X 거리의 절반입니다.
+  // 이 가로선의 정중앙은 비율상 전체 거리의 3/4 지점이 됩니다.
+  const distanceX = targetX - sourceX;
+  const customLabelX = targetX - (distanceX / 4); 
+  const customLabelY = targetY; // 높이는 타겟 노드와 정확히 맞춤
+
+  // 🔥 [수정 2] label이 문자열 "null"이거나 비어있으면 렌더링하지 않음
+  const isValidLabel = label && label !== "null" && label.trim() !== "";
+
+  const edgeStyle = {
+    ...style,
+    opacity: contextMode ? (isTrulyActive ? 1 : 0.2) : 1,
+    transition: "opacity 0.2s ease",
+  };
 
   return (
     <>
       <BaseEdge path={edgePath} markerEnd={markerEnd} style={edgeStyle} />
-      <EdgeLabelRenderer>
-        <EdgeLabelContainer
-          style={{
-            left: `${labelX}px`,
-            top: `${labelY}px`,
-            opacity: edgeStyle.opacity,  // ✅ Graph에서 설정한 투명도 사용
-          }}
-        >
-          {label}
-        </EdgeLabelContainer>
-      </EdgeLabelRenderer>
+      {isValidLabel && (
+        <EdgeLabelRenderer>
+          <EdgeLabelContainer
+            style={{
+              left: `${customLabelX}px`,
+              top: `${customLabelY}px`,
+              opacity: edgeStyle.opacity,
+            }}
+          >
+            {label}
+          </EdgeLabelContainer>
+        </EdgeLabelRenderer>
+      )}
     </>
   );
 };
