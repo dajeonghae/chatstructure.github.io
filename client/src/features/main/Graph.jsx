@@ -21,7 +21,6 @@ const colorPalette = [
   "#6BCB77", "#FF914D", "#93AFEA", "#FFB6C1"
 ];
 
-// 팔레트에서 인덱스로 색을 고르는 유틸
 function getColor(index) {
   return colorPalette[index % colorPalette.length];
 }
@@ -94,7 +93,6 @@ const VisContainer = styled.div`
   z-index: 10;
 `;
 
-/* ── ProgressBar: 채워진 부분 색을 동적으로 바꿉니다 ─────────────── */
 const ProgressBar = styled.div`
   position: relative;
   width: 100%;
@@ -151,7 +149,6 @@ try {
 } catch { return "#111"; }
 }
 
-/* 색상 보간(검붉은색 → 빨강). 입력은 hex, 0<=t<=1 */
 function mixHex(a, b, t) {
   const pa = parseInt(a.slice(1), 16);
   const pb = parseInt(b.slice(1), 16);
@@ -163,17 +160,15 @@ function mixHex(a, b, t) {
   return `#${((1 << 24) + (r << 16) + (g << 8) + b2).toString(16).slice(1).toUpperCase()}`;
 }
 
-/* 퍼센트에 따라 채움 색(단색) 계산: <85% 회색, 85~95% 검붉은→빨강, >=95% 빨강 */
 function getFillColor(percent) {
-  const base = "#575A5E";   // 기본(회색)
-  const dark = "#7F1D1D";   // 검붉은 시작색
-  const danger = "#E11D48"; // 빨강 끝색
+  const base = "#575A5E";
+  const dark = "#7F1D1D";
+  const danger = "#E11D48";
 
   if (percent < 85) return base;
   if (percent >= 95) return danger;
 
-  // 85~95% 사이 단색 보간
-  const t = (percent - 85) / (95 - 85); // 0~1
+  const t = (percent - 85) / (95 - 85);
   return mixHex(dark, danger, t);
 }
 
@@ -190,7 +185,6 @@ function hexWithAlpha(hex, alpha = 0.4) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-// 글자색: 노드색을 약간 탁하게 (검정이랑 50% 정도 섞기)
 function dullify(hex, amount = 0.5) {
   return mixHex(hex, "#111111", amount);
 }
@@ -236,7 +230,6 @@ function Graph() {
   const tokenLimit = TOKEN_LIMIT;
   const percent = Math.min(100, Math.round((tokenUsed / tokenLimit) * 100));
 
-  // 경고/상태 문구
   let status = { text: "occupied", color: "#A5A7AA" };
   if (percent >= 100) {
     status = {
@@ -257,31 +250,26 @@ function Graph() {
   const handleToggle = () => dispatch(toggleContextMode());
 
   const keywordChips = useMemo(() => {
-    // 같은 키워드는 하나만 노출 (첫 등장의 색/노드 사용)
-    const seen = new Map(); // normKw -> { kw, nid, bg, fg }
+    const seen = new Map();
     activeNodeIds.forEach((nid) => {
       const node = nodesData[nid];
       if (!node) return;
 
       const base = (nodeColors && nodeColors[nid]) || "#E2F0CB";
-      const chipBg = hexWithAlpha(base, 0.25); // 배경: 노드색 + 투명도
-      const chipFg = dullify(base, 0.6);       // 글자: 노드색을 약간 탁하게
+      const chipBg = hexWithAlpha(base, 0.25);
+      const chipFg = dullify(base, 0.6);
 
       const kws = Array.isArray(node.keywords) ? node.keywords : [];
       kws.forEach((kw) => {
         const norm = normalizeKeyword(kw);
         if (!norm) return;
-        // 이미 본 키워드는 스킵 (먼저 본 색/노드 유지)
         if (!seen.has(norm)) {
           seen.set(norm, { kw, nid, bg: chipBg, fg: chipFg });
         }
       });
     });
-
-    // 입력 순서(활성 노드 순서 -> 키워드 순서) 보존
     return Array.from(seen.values());
   }, [activeNodeIds, nodesData, nodeColors]);
-
 
   useEffect(() => {
     const nodeMap = { ...nodesData };
@@ -292,10 +280,6 @@ function Graph() {
     const updatedNodes = [];
     const updatedEdges = [];
 
-    const spacingX = 340;
-    const spacingY = 100;
-    let currentY = 10000;
-
     Object.values(nodeMap).forEach((node) => {
       if (!node?.id) return;
       if (node.parent) {
@@ -303,6 +287,89 @@ function Graph() {
         childrenMap[node.parent].push(node.id);
       }
     });
+
+    const nodeDepths = {};
+    const getDepth = (id) => {
+      if (nodeDepths[id] !== undefined) return nodeDepths[id];
+      const node = nodeMap[id];
+      if (!node || !node.parent || !nodeMap[node.parent]) {
+        nodeDepths[id] = 0;
+        return 0;
+      }
+      const d = getDepth(node.parent) + 1;
+      nodeDepths[id] = d;
+      return d;
+    };
+
+    Object.keys(nodeMap).forEach(getDepth);
+
+    // 🔥 정교한 노드 길이 측정기
+    const estimateNodeWidth = (text) => {
+      const str = String(text || "");
+      let w = 0;
+      for (let i = 0; i < str.length; i++) {
+        const charCode = str.charCodeAt(i);
+        if (charCode === 32) w += 14 * 0.3; // 띄어쓰기
+        else if (charCode >= 0xac00 && charCode <= 0xd7a3) w += 14 * 0.95; // 한글
+        else w += 14 * 0.6; // 영문/숫자
+      }
+      return w + 44; // 노드 양옆 패딩 및 보더값
+    };
+
+    // 🔥 정교한 관계선(relation) 라벨 길이 측정기
+    const estimateRelWidth = (text) => {
+      const str = String(text || "");
+      if (str === "null" || str === "") return 0;
+      let w = 0;
+      for (let i = 0; i < str.length; i++) {
+        const charCode = str.charCodeAt(i);
+        if (charCode === 32) w += 13 * 0.3;
+        else if (charCode >= 0xac00 && charCode <= 0xd7a3) w += 13 * 0.95;
+        else w += 13 * 0.6;
+      }
+      return w + 16; // 라벨 내부 패딩
+    };
+
+    // 각 뎁스별로 필요한 실제 [최소 간격] 저장
+    const gapAtDepth = {}; 
+
+    // 🔥 [핵심 로직] 각 엣지(선) 단위로 묶어서 간격 계산!
+    Object.values(nodeMap).forEach((node) => {
+      if (!node.parent || !nodeMap[node.parent]) return;
+      
+      const pDepth = nodeDepths[node.parent];
+      const pNode = nodeMap[node.parent];
+      
+      const pNodeWidth = estimateNodeWidth(pNode.keyword); // 출발 노드 폭
+      const relWidth = estimateRelWidth(node.relation); // 해당 선의 텍스트 폭
+      
+      // 텍스트가 있을 경우, 텍스트가 꺾임선을 침범하지 않게 양옆 여유분(buffer) 딱 15px만 부여
+      const buffer = relWidth > 0 ? 15 : 0; 
+      
+      // 가운데서 꺾이는 SmoothStep 특성상, 텍스트를 담을 오른쪽 수평선을 만들려면 그 두 배의 물리적 거리가 필요함
+      const requiredDistanceX = (relWidth + buffer) * 2;
+      
+      // 이 특정 엣지가 요구하는 [출발지 ~ 도착지까지의 최소 X거리]
+      const requiredGap = pNodeWidth + requiredDistanceX;
+      
+      // 같은 depth에 있는 여러 엣지들 중 "가장 긴 놈"을 최종 기준 간격으로 갱신!
+      if (!gapAtDepth[pDepth] || requiredGap > gapAtDepth[pDepth]) {
+        gapAtDepth[pDepth] = requiredGap;
+      }
+    });
+
+    const depthX = { 0: 0 };
+    const maxD = Math.max(...Object.values(nodeDepths), 0);
+    
+    // 최종 산출된 뎁스별 간격 적용
+    for (let d = 0; d <= maxD; d++) {
+       // 노드나 라벨이 아예 없어서 너무 짧아지는 걸 방지하기 위해 최소 240px 보장
+       const gap = Math.max(gapAtDepth[d] || 240, 240); 
+       depthX[d+1] = depthX[d] + gap;
+    }
+
+    const spacingY = 100;
+    let currentY = 10000;
 
     const assignPositions = (nodeId, depth, rootId, inheritedColor) => {
       const children = childrenMap[nodeId] || [];
@@ -331,7 +398,7 @@ function Graph() {
         yPos = (top + bottom) / 2;
       }
 
-      positionedMap[nodeId] = { x: depth * spacingX, y: yPos };
+      positionedMap[nodeId] = { x: depthX[depth], y: yPos };
       return subtreeHeight;
     };
 
@@ -445,7 +512,6 @@ function Graph() {
 
   return (
     <Page>
-      {/* 1) 그래프 패널 */}
       <GraphPanel ref={containerRef}>
         <ToggleContainer>
           <ToggleButton active={contextMode} onToggle={handleToggle} />
@@ -468,14 +534,12 @@ function Graph() {
         </ReactFlow>
       </GraphPanel>
 
-      {/* 2) 아래 패널: 밀어내며 슬라이드 */}
       <SlideSection $h={helpersHeight} $open={contextMode}>
         <div ref={helpersInnerRef}>
           <HelperContainer>
             <TokenPanel>
               <PanelTitle>Token Info</PanelTitle>
 
-              {/* 헤더: % + 상태문구(색상 동적) */}
               <div style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
                 <span style={{ fontSize: 28, fontWeight: 800, color: '#373D47' }}>
                   {percent}%
@@ -488,7 +552,7 @@ function Graph() {
                   className="fill"
                   style={{
                     width: `${percent}%`,
-                    background: fillColor,  // ← 단색
+                    background: fillColor,
                   }}
                 />
               </ProgressBar>
