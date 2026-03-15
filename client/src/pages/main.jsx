@@ -45,16 +45,16 @@ const GraphContainer = styled.div`
 function Main() {
   return (
     <Container>
-      <GraphSection>
-        <GraphContainer>
-          <Graph/>
-        </GraphContainer>
-      </GraphSection>
       <ChatSection>
         <ChatContainer>
           <Chatbot/>
         </ChatContainer>
       </ChatSection>
+      <GraphSection>
+        <GraphContainer>
+          <Graph/>
+        </GraphContainer>
+      </GraphSection>
     </Container>
   );
 }
