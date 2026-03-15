@@ -16,44 +16,43 @@ import {
 import { store } from "../../redux/store.js";
 import axios from "axios";
 import DialogPair from "../../components/textBox/DialogPair.jsx";
-import ChatIndex from "./ChatIndex.jsx"; // 👈 ChatIndex 임포트 확인!
+import ChatIndex from "./ChatIndex.jsx";
+
+
+const LayoutWrapper = styled.div`
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+`;
 
 const ChatContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 100%;
+  flex: 1; 
   height: 100%;
-`;
-
-const ChatContentWrapper = styled.div`
-  display: flex;
-  flex-direction: row;
-  width: 100%;
-  flex: 1;
-  overflow: hidden;
-  margin-bottom: 20px;
 `;
 
 const MessagesContainer = styled.div`
   flex: 1;
-  width: 100%;
+  width: 93%;
   padding: 20px;
   overflow-y: auto;
   scrollbar-width: none;
+  margin-bottom: 2px; 
 `;
 
 const InputContainer = styled.div`
   z-index: 100;
   display: flex;
-  width: 78%;
+  width: 87%;
   min-height: 40px;
   max-height: 120px;
   align-items: flex-end;
   justify-content: space-between;
   padding: 8px 8px 8px 20px;
   
-  /* ✨ 상태에 따라 border-radius 변경 및 부드러운 전환 효과 추가 */
   border-radius: ${(props) => (props.$isExpanded ? "30px" : "100px")};
   transition: border-radius 0.2s ease-in-out;
   
@@ -61,7 +60,7 @@ const InputContainer = styled.div`
   background-color: #ffffff;
   box-shadow: 0px 8px 24px rgba(149, 157, 165, 0.2);
   gap: 10px;
-  margin-left: -80px;
+  margin-left: -8px;
 `;
 
 const TextArea = styled.textarea`
@@ -282,7 +281,7 @@ function Chatbot() {
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 0);
-      alert("📦 스냅샷 복 복원 완료!(JSON)");
+      alert("📦 스냅샷 복원 완료!(JSON)");
     } catch (err2) {
       console.error(err2);
       alert("❌ 스냅샷 불러오기 실패 (콘솔 확인)");
@@ -429,8 +428,8 @@ function Chatbot() {
   };
 
   return (
-    <ChatContainer>
-      <ChatContentWrapper>
+    <LayoutWrapper>
+      <ChatContainer>
         <MessagesContainer ref={scrollContainerRef} onScroll={handleScroll}>
           {(() => {
             const pairedMessages = [];
@@ -456,63 +455,66 @@ function Chatbot() {
           <div ref={messagesEndRef} />
         </MessagesContainer>
 
-        <ChatIndex scrollPercent={scrollPercent} />
-      </ChatContentWrapper>
+        {activeDialogNumbers.length > 0 && (
+          <ArrowContainer>
+            {(() => {
+              const sortedDialogs = [...activeDialogNumbers].sort((a, b) => a - b);
+              const currentIndex = sortedDialogs.indexOf(currentScrolledDialog);
 
-      {activeDialogNumbers.length > 0 && (
-        <ArrowContainer>
-          {(() => {
-            const sortedDialogs = [...activeDialogNumbers].sort((a, b) => a - b);
-            const currentIndex = sortedDialogs.indexOf(currentScrolledDialog);
+              return (
+                <>
+                  <ArrowButton onClick={() => moveToMessage(-1)} disabled={currentIndex <= 0}>
+                    <span className="material-symbols-outlined md-black-font md-30" style={{ userSelect: "none" }}>keyboard_arrow_up</span>
+                  </ArrowButton>
+                  <ArrowButton onClick={() => moveToMessage(1)} disabled={currentIndex >= sortedDialogs.length - 1}>
+                    <span className="material-symbols-outlined md-black-font md-30" style={{ userSelect: "none" }}>keyboard_arrow_down</span>
+                  </ArrowButton>
+                </>
+              );
+            })()}
+          </ArrowContainer>
+        )}
+        
+        <TopButtonContainer>
+          <ExportButton onClick={handleExportSnapshot}>Export</ExportButton> 
+          <ImportButton onClick={handleLoadFromServer}>Import</ImportButton>
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="application/json"
+            style={{ display: "none" }}
+            onChange={handleImportSnapshot}
+          />
+        </TopButtonContainer>
+        
+        <InputContainer 
+          $isExpanded={isExpanded}
+          style={{ opacity: isLoading ? 0.5 : 1, pointerEvents: isLoading ? 'none' : 'auto' }}
+        >
+          <TextArea
+            ref={textareaRef} 
+            value={input}
+            onChange={handleInput}
+            onKeyDown={handleKeyDown}
+            placeholder="메세지 입력하기"
+            disabled={isLoading}
+            rows={1} 
+          />
+          <Button onClick={handleSend} disabled={isLoading}>
+            <span 
+              className="material-symbols-outlined md-white md-24" 
+              style={{ userSelect: "none" }}
+            >
+              arrow_upward
+            </span>
+          </Button>
+        </InputContainer>
+      </ChatContainer>
 
-            return (
-              <>
-                <ArrowButton onClick={() => moveToMessage(-1)} disabled={currentIndex <= 0}>
-                  <span className="material-symbols-outlined md-black-font md-30" style={{ userSelect: "none" }}>keyboard_arrow_up</span>
-                </ArrowButton>
-                <ArrowButton onClick={() => moveToMessage(1)} disabled={currentIndex >= sortedDialogs.length - 1}>
-                  <span className="material-symbols-outlined md-black-font md-30" style={{ userSelect: "none" }}>keyboard_arrow_down</span>
-                </ArrowButton>
-              </>
-            );
-          })()}
-        </ArrowContainer>
-      )}
-      <TopButtonContainer>
-        <ExportButton onClick={handleExportSnapshot}>Export</ExportButton> 
-        <ImportButton onClick={handleLoadFromServer}>Import</ImportButton>
-        <input
-          type="file"
-          ref={fileInputRef}
-          accept="application/json"
-          style={{ display: "none" }}
-          onChange={handleImportSnapshot}
-        />
-      </TopButtonContainer>
-      
-      <InputContainer 
-        $isExpanded={isExpanded}
-        style={{ opacity: isLoading ? 0.5 : 1, pointerEvents: isLoading ? 'none' : 'auto' }}
-      >
-        <TextArea
-          ref={textareaRef} 
-          value={input}
-          onChange={handleInput}
-          onKeyDown={handleKeyDown}
-          placeholder="메세지 입력하기"
-          disabled={isLoading}
-          rows={1} 
-        />
-        <Button onClick={handleSend} disabled={isLoading}>
-          <span 
-            className="material-symbols-outlined md-white md-24" 
-            style={{ userSelect: "none" }}
-          >
-            arrow_upward
-          </span>
-        </Button>
-      </InputContainer>
-    </ChatContainer>
+      {/* 인덱스가 드디어 우측 끝, 전체 높이에 고정됩니다! */}
+      <ChatIndex scrollPercent={scrollPercent} />
+
+    </LayoutWrapper>
   );
 }
 
