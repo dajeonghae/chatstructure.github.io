@@ -1,23 +1,18 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import styled from "styled-components";
 import { useDispatch, useSelector } from "react-redux";
 import { sendMessageToApi } from "../../services/chatbotService.js";
-import DialogBox from "../../components/textBox/DialogBox.jsx";
-import { setCurrentScrolledDialog, resetState} from "../../redux/slices/nodeSlice.js";
+import { setCurrentScrolledDialog } from "../../redux/slices/nodeSlice.js";
 import { parseConversationHistory } from "../../utils/parseConversationHistory.js";
 import {
   buildFullSnapshot,
   downloadSnapshotFile,
   loadSnapshotThunk,
-  saveSnapshotToProject,
-  listProjectSnapshots,
-  loadSnapshotFromProjectThunk
 } from "../../utils/snapshotManager.js";
 import { store } from "../../redux/store.js";
 import axios from "axios";
 import DialogPair from "../../components/textBox/DialogPair.jsx";
 import ChatIndex from "./ChatIndex.jsx";
-
 
 const LayoutWrapper = styled.div`
   display: flex;
@@ -30,8 +25,9 @@ const ChatContainer = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  flex: 1; 
+  flex: 1;
   height: 100%;
+  position: relative;
 `;
 
 const MessagesContainer = styled.div`
@@ -40,7 +36,7 @@ const MessagesContainer = styled.div`
   padding: 20px;
   overflow-y: auto;
   scrollbar-width: none;
-  margin-bottom: 2px; 
+  margin-bottom: 2px;
 `;
 
 const InputContainer = styled.div`
@@ -52,10 +48,10 @@ const InputContainer = styled.div`
   align-items: flex-end;
   justify-content: space-between;
   padding: 8px 8px 8px 20px;
-  
+
   border-radius: ${(props) => (props.$isExpanded ? "30px" : "100px")};
   transition: border-radius 0.2s ease-in-out;
-  
+
   border: 1px solid rgba(240, 240, 240);
   background-color: #ffffff;
   box-shadow: 0px 8px 24px rgba(149, 157, 165, 0.2);
@@ -64,10 +60,10 @@ const InputContainer = styled.div`
 `;
 
 const TextArea = styled.textarea`
-  height: 40px; 
-  min-height: 40px; 
-  box-sizing: border-box; 
-  max-height: 100px; 
+  height: 40px;
+  min-height: 40px;
+  box-sizing: border-box;
+  max-height: 100px;
   flex: 1;
   border: none;
   background-color: transparent;
@@ -75,15 +71,15 @@ const TextArea = styled.textarea`
   font-family: "Pretendard";
   resize: none;
   overflow-y: auto;
-  
-  line-height: 20px; 
-  padding: 10px 15px; 
+
+  line-height: 20px;
+  padding: 10px 15px;
   margin: 0;
-  
+
   &:focus {
     outline: none;
   }
-  
+
   &::placeholder {
     color: #999;
   }
@@ -102,13 +98,14 @@ const Button = styled.button`
 `;
 
 const ArrowContainer = styled.div`
-  position: fixed;
-  bottom: 100px;
-  right: 20px;
+  position: absolute;
+  bottom: -45px;
+  right: -150px;
   margin: 0px 100px 50px 0px;
   display: flex;
   flex-direction: column;
   gap: 7px;
+  z-index: 100;
 `;
 
 const ArrowButton = styled.button`
@@ -153,6 +150,7 @@ const SaveButton = styled.button`
 const ExportButton = styled(SaveButton)`
   background-color: #2d3748;
 `;
+
 const ImportButton = styled(SaveButton)`
   background-color: #ffffff;
   color: #2d3748;
@@ -162,39 +160,44 @@ const ImportButton = styled(SaveButton)`
 function Chatbot() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
-  const [scrollPercent, setScrollPercent] = useState(100); 
+  const [scrollPercent, setScrollPercent] = useState(100);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [topicMarkers, setTopicMarkers] = useState([]);
 
   const scrollContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const messageRefs = useRef([]);
   const fileInputRef = useRef(null);
   const prevActiveDialogNumbersRef = useRef([]);
+  const textareaRef = useRef(null);
 
   const dispatch = useDispatch();
 
-  const dialogNumber = useSelector((state) => state.node.dialogCount);
   const activeDialogNumbers = useSelector((state) => state.node.activeDialogNumbers);
   const currentScrolledDialog = useSelector((state) => state.node.currentScrolledDialog);
-  const contextMode = useSelector((state) => state.mode.contextMode);
+  const activeNodeIds = useSelector((state) => state.node.activeNodeIds);
+  const nodes = useSelector((state) => state.node.nodes);
+  const nodeColors = useSelector((state) => state.node.nodeColors);
 
-  const [isExpanded, setIsExpanded] = useState(false); 
-  const textareaRef = useRef(null); 
+  const currentNodeId = activeNodeIds[activeNodeIds.length - 1] || "root";
 
   const handleScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target;
+
     if (scrollHeight <= clientHeight) {
-      setScrollPercent(100);
+      setScrollPercent(0);
       return;
     }
+
     const percent = (scrollTop / (scrollHeight - clientHeight)) * 100;
     setScrollPercent(percent);
   };
 
   const scrollToMessage = (index) => {
-    if (messageRefs.current[index]) {
-      messageRefs.current[index].scrollIntoView({ behavior: "smooth", block: "center" });
+    const el = messageRefs.current[index];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   };
 
@@ -204,6 +207,55 @@ function Chatbot() {
     }
   };
 
+  const calculateTopicMarkers = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const topicNodes = Object.values(nodes).filter(
+      (node) => node.parent === "root" && node.id !== "root"
+    );
+
+    const totalScrollableHeight = Math.max(1, container.scrollHeight - container.clientHeight);
+
+    const markers = topicNodes
+      .map((node) => {
+        const dialogNumbers = Object.keys(node.dialog || {}).map(Number);
+        if (dialogNumbers.length === 0) return null;
+
+        const firstDialogNumber = Math.min(...dialogNumbers);
+
+        // pair 번호 -> user message index
+        const userMessageIndex = (firstDialogNumber - 1) * 2;
+        const targetEl = messageRefs.current[userMessageIndex];
+
+        if (!targetEl) return null;
+
+        const containerRect = container.getBoundingClientRect();
+        const targetRect = targetEl.getBoundingClientRect();
+        const topPx = targetRect.top - containerRect.top + container.scrollTop;
+
+        const topPercent = Math.max(
+          0,
+          Math.min(100, (topPx / totalScrollableHeight) * 100)
+        );
+
+        return {
+          nodeId: node.id,
+          keyword: node.keyword,
+          color: nodeColors[node.id] || "#A5A7AA",
+          topPercent,
+          messageIndex: userMessageIndex,
+        };
+      })
+      .filter(Boolean);
+
+    setTopicMarkers(markers);
+  };
+
+  const handleMarkerClick = (messageIndex) => {
+    scrollToMessage(messageIndex);
+  };
+
   useEffect(() => {
     const prevDialogs = prevActiveDialogNumbersRef.current;
     const currDialogs = activeDialogNumbers;
@@ -211,14 +263,13 @@ function Chatbot() {
     const prevSorted = [...prevDialogs].sort((a, b) => a - b);
     const currSorted = [...currDialogs].sort((a, b) => a - b);
 
-    const newlyAdded = currSorted.filter(num => !prevSorted.includes(num));
-    const newlyRemoved = prevSorted.filter(num => !currSorted.includes(num));
+    const newlyAdded = currSorted.filter((num) => !prevSorted.includes(num));
+    const newlyRemoved = prevSorted.filter((num) => !currSorted.includes(num));
 
     if (newlyAdded.length > 0) {
       const latest = newlyAdded[newlyAdded.length - 1];
       const latestIndex = latest - 1;
 
-      setCurrentIndex(currSorted.indexOf(latest));
       dispatch(setCurrentScrolledDialog(latest));
 
       setTimeout(() => {
@@ -232,18 +283,31 @@ function Chatbot() {
       }, currSorted[0]);
 
       dispatch(setCurrentScrolledDialog(closest));
-      setCurrentIndex(currSorted.indexOf(closest));
     }
 
     prevActiveDialogNumbersRef.current = currDialogs;
-  }, [activeDialogNumbers]);
+  }, [activeDialogNumbers, currentScrolledDialog, dispatch]);
 
   useEffect(() => {
     scrollToBottom();
     setTimeout(() => {
+      calculateTopicMarkers();
       setScrollPercent(100);
     }, 100);
   }, [messages]);
+
+  useLayoutEffect(() => {
+    calculateTopicMarkers();
+  }, [messages, nodes, nodeColors]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      calculateTopicMarkers();
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [messages, nodes, nodeColors]);
 
   const moveToMessage = (direction) => {
     const sortedDialogs = [...activeDialogNumbers].sort((a, b) => a - b);
@@ -257,9 +321,6 @@ function Chatbot() {
       scrollToMessage(nextMessageNumber - 1);
     }
   };
-  
-  const activeNodeIds = useSelector((state) => state.node.activeNodeIds);
-  const currentNodeId = activeNodeIds[activeNodeIds.length - 1] || "root";
 
   const handleExportSnapshot = () => {
     const reduxState = store.getState();
@@ -267,23 +328,23 @@ function Chatbot() {
     downloadSnapshotFile(snapshot);
   };
 
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
   const handleImportSnapshot = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
+
     try {
       const { messages: restored } = await dispatch(loadSnapshotThunk(file));
       setMessages(restored || []);
+
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        calculateTopicMarkers();
       }, 0);
+
       alert("📦 스냅샷 복원 완료!(JSON)");
-    } catch (err2) {
-      console.error(err2);
+    } catch (err) {
+      console.error(err);
       alert("❌ 스냅샷 불러오기 실패 (콘솔 확인)");
     }
   };
@@ -302,9 +363,10 @@ function Chatbot() {
 
     let updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
-    
+
     setInput("");
     setIsExpanded(false);
+
     if (textareaRef.current) {
       textareaRef.current.style.height = "40px";
     }
@@ -317,6 +379,7 @@ function Chatbot() {
         nodeId: currentNodeId,
         number: updatedMessages.length + 1,
       };
+
       updatedMessages = [...updatedMessages, gptMessage];
       setMessages(updatedMessages);
     } catch (error) {
@@ -328,12 +391,9 @@ function Chatbot() {
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
-      if (e.shiftKey) {
-        return;
-      } else {
-        e.preventDefault();
-        handleSend();
-      }
+      if (e.shiftKey) return;
+      e.preventDefault();
+      handleSend();
     }
   };
 
@@ -362,6 +422,7 @@ function Chatbot() {
             nodeId: currentNodeId,
             number: running.length + 1,
           };
+
           running = [...running, userMessage];
           setMessages(running);
 
@@ -376,6 +437,7 @@ function Chatbot() {
               nodeId: currentNodeId,
               number: running.length + 1,
             };
+
             running = [...running, gptMessage];
             setMessages(running);
           } catch (err) {
@@ -389,7 +451,7 @@ function Chatbot() {
 
     window.addEventListener("chat:replay", onReplay);
     return () => window.removeEventListener("chat:replay", onReplay);
-  }, [dispatch, currentNodeId, messages.length]);
+  }, [dispatch, currentNodeId, messages]);
 
   const handleLoadFromServer = async () => {
     try {
@@ -402,6 +464,7 @@ function Chatbot() {
 
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        calculateTopicMarkers();
       }, 0);
 
       alert("♻️ 서버에서 스냅샷 불러오기 완료 (chatgraph.json)");
@@ -413,17 +476,16 @@ function Chatbot() {
 
   const handleInput = (e) => {
     setInput(e.target.value);
-    
-    e.target.style.height = '40px'; 
-    
+
+    e.target.style.height = "40px";
     const currentScrollHeight = e.target.scrollHeight;
-    
+
     if (currentScrollHeight > 45) {
       setIsExpanded(true);
-      e.target.style.height = currentScrollHeight + 'px';
+      e.target.style.height = `${currentScrollHeight}px`;
     } else {
       setIsExpanded(false);
-      e.target.style.height = '40px';
+      e.target.style.height = "40px";
     }
   };
 
@@ -433,6 +495,7 @@ function Chatbot() {
         <MessagesContainer ref={scrollContainerRef} onScroll={handleScroll}>
           {(() => {
             const pairedMessages = [];
+
             for (let i = 0; i < messages.length; i += 2) {
               pairedMessages.push({
                 userMsg: messages[i],
@@ -447,8 +510,14 @@ function Chatbot() {
                 key={index}
                 userMsg={pair.userMsg}
                 aiMsg={pair.aiMsg}
-                userRef={(el) => (messageRefs.current[pair.userIndex] = el)}
-                aiRef={(el) => { if (pair.aiMsg) messageRefs.current[pair.aiIndex] = el; }}
+                userRef={(el) => {
+                  messageRefs.current[pair.userIndex] = el;
+                }}
+                aiRef={(el) => {
+                  if (pair.aiMsg) {
+                    messageRefs.current[pair.aiIndex] = el;
+                  }
+                }}
               />
             ));
           })()}
@@ -464,19 +533,32 @@ function Chatbot() {
               return (
                 <>
                   <ArrowButton onClick={() => moveToMessage(-1)} disabled={currentIndex <= 0}>
-                    <span className="material-symbols-outlined md-black-font md-30" style={{ userSelect: "none" }}>keyboard_arrow_up</span>
+                    <span
+                      className="material-symbols-outlined md-black-font md-30"
+                      style={{ userSelect: "none" }}
+                    >
+                      keyboard_arrow_up
+                    </span>
                   </ArrowButton>
-                  <ArrowButton onClick={() => moveToMessage(1)} disabled={currentIndex >= sortedDialogs.length - 1}>
-                    <span className="material-symbols-outlined md-black-font md-30" style={{ userSelect: "none" }}>keyboard_arrow_down</span>
+                  <ArrowButton
+                    onClick={() => moveToMessage(1)}
+                    disabled={currentIndex >= sortedDialogs.length - 1}
+                  >
+                    <span
+                      className="material-symbols-outlined md-black-font md-30"
+                      style={{ userSelect: "none" }}
+                    >
+                      keyboard_arrow_down
+                    </span>
                   </ArrowButton>
                 </>
               );
             })()}
           </ArrowContainer>
         )}
-        
+
         <TopButtonContainer>
-          <ExportButton onClick={handleExportSnapshot}>Export</ExportButton> 
+          <ExportButton onClick={handleExportSnapshot}>Export</ExportButton>
           <ImportButton onClick={handleLoadFromServer}>Import</ImportButton>
           <input
             type="file"
@@ -486,23 +568,23 @@ function Chatbot() {
             onChange={handleImportSnapshot}
           />
         </TopButtonContainer>
-        
-        <InputContainer 
+
+        <InputContainer
           $isExpanded={isExpanded}
-          style={{ opacity: isLoading ? 0.5 : 1, pointerEvents: isLoading ? 'none' : 'auto' }}
+          style={{ opacity: isLoading ? 0.5 : 1, pointerEvents: isLoading ? "none" : "auto" }}
         >
           <TextArea
-            ref={textareaRef} 
+            ref={textareaRef}
             value={input}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
             placeholder="메세지 입력하기"
             disabled={isLoading}
-            rows={1} 
+            rows={1}
           />
           <Button onClick={handleSend} disabled={isLoading}>
-            <span 
-              className="material-symbols-outlined md-white md-24" 
+            <span
+              className="material-symbols-outlined md-white md-24"
               style={{ userSelect: "none" }}
             >
               arrow_upward
@@ -511,9 +593,11 @@ function Chatbot() {
         </InputContainer>
       </ChatContainer>
 
-      {/* 인덱스가 드디어 우측 끝, 전체 높이에 고정됩니다! */}
-      <ChatIndex scrollPercent={scrollPercent} />
-
+      <ChatIndex
+        scrollPercent={scrollPercent}
+        markers={topicMarkers}
+        onMarkerClick={handleMarkerClick}
+      />
     </LayoutWrapper>
   );
 }
