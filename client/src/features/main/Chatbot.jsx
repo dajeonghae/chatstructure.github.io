@@ -15,6 +15,7 @@ import {
 } from "../../utils/snapshotManager.js";
 import { store } from "../../redux/store.js";
 import axios from "axios";
+import DialogPair from "../../components/textBox/DialogPair.jsx"; // 경로에 맞게 수정해주세요
 
 const ChatContainer = styled.div`
   display: flex;
@@ -452,21 +453,31 @@ const handleInput = (e) => {
 
   return (
     <ChatContainer>
-      <MessagesContainer>
-        {messages.map((msg, index) => (
-          <div
-            key={index}
-            ref={(el) => (messageRefs.current[index] = el)}  // 🔥 각 메시지에 ref 할당
-          >
-            <DialogBox
-              text={msg.content}
-              isUser={msg.role === "user"}
-              nodeId={msg.nodeId}
-              number={msg.number}
-            />
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
+    <MessagesContainer>
+            {(() => {
+              // 메시지를 2개(User, AI) 단위로 묶어주기
+              const pairedMessages = [];
+              for (let i = 0; i < messages.length; i += 2) {
+                pairedMessages.push({
+                  userMsg: messages[i],
+                  aiMsg: messages[i + 1], // 마지막 홀수번째일 경우 undefined (AI 답변 대기중)
+                  userIndex: i,
+                  aiIndex: i + 1,
+                });
+              }
+
+              return pairedMessages.map((pair, index) => (
+                <DialogPair
+                  key={index}
+                  userMsg={pair.userMsg}
+                  aiMsg={pair.aiMsg}
+                  // Chatbot의 스크롤 관리를 위해 각 메시지 div에 ref를 다시 연결해줍니다.
+                  userRef={(el) => (messageRefs.current[pair.userIndex] = el)}
+                  aiRef={(el) => { if (pair.aiMsg) messageRefs.current[pair.aiIndex] = el; }}
+                />
+              ));
+            })()}
+            <div ref={messagesEndRef} />
       </MessagesContainer>
       {activeDialogNumbers.length > 0 && (
         <ArrowContainer>

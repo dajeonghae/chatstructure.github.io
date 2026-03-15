@@ -11,6 +11,7 @@ import ToggleButton from "../../components/button/ToggleButton";
 import { toggleContextMode } from "../../redux/slices/modeSlice";
 import { setNodeColors } from "../../redux/slices/nodeSlice";
 
+
 const edgeTypes = { custom: CustomEdge, bezier: BezierEdge };
 const nodeTypes = { tooltipNode: CustomTooltipNode };
 
@@ -137,17 +138,6 @@ const SlideSection = styled.div`
   opacity: ${(p) => (p.$open ? 1 : 0)};
   transform: translateY(${(p) => (p.$open ? "0px" : "8px")});
 `;
-
-function getReadableTextColor(hex = "#000000") {
-try {
-  const x = hex.replace("#", "");
-  const r = parseInt(x.substring(0, 2), 16);
-  const g = parseInt(x.substring(2, 4), 16);
-  const b = parseInt(x.substring(4, 6), 16);
-  const yiq = (r*299 + g*587 + b*114) / 1000;
-  return yiq >= 140 ? "#111" : "#fff";
-} catch { return "#111"; }
-}
 
 function mixHex(a, b, t) {
   const pa = parseInt(a.slice(1), 16);
@@ -280,12 +270,23 @@ function Graph() {
     const updatedNodes = [];
     const updatedEdges = [];
 
+    // 부모-자식 관계 설정
     Object.values(nodeMap).forEach((node) => {
       if (!node?.id) return;
       if (node.parent) {
         if (!childrenMap[node.parent]) childrenMap[node.parent] = [];
         childrenMap[node.parent].push(node.id);
       }
+    });
+
+    // 🔥 자식 노드를 '생성 시간' 순으로 정렬 (과거 -> 미래)
+    Object.keys(childrenMap).forEach((parentId) => {
+      childrenMap[parentId].sort((aId, bId) => {
+        const nodeA = nodeMap[aId];
+        const nodeB = nodeMap[bId];
+        // createdAt이 없으면 0으로 취급하여 안전하게 정렬
+        return (nodeA.createdAt || 0) - (nodeB.createdAt || 0);
+      });
     });
 
     const nodeDepths = {};
@@ -303,20 +304,18 @@ function Graph() {
 
     Object.keys(nodeMap).forEach(getDepth);
 
-    // 🔥 정교한 노드 길이 측정기
     const estimateNodeWidth = (text) => {
       const str = String(text || "");
       let w = 0;
       for (let i = 0; i < str.length; i++) {
         const charCode = str.charCodeAt(i);
-        if (charCode === 32) w += 14 * 0.3; // 띄어쓰기
-        else if (charCode >= 0xac00 && charCode <= 0xd7a3) w += 14 * 0.95; // 한글
-        else w += 14 * 0.6; // 영문/숫자
+        if (charCode === 32) w += 14 * 0.3; 
+        else if (charCode >= 0xac00 && charCode <= 0xd7a3) w += 14 * 0.95;
+        else w += 14 * 0.6; 
       }
-      return w + 44; // 노드 양옆 패딩 및 보더값
+      return w + 44; 
     };
 
-    // 🔥 정교한 관계선(relation) 라벨 길이 측정기
     const estimateRelWidth = (text) => {
       const str = String(text || "");
       if (str === "null" || str === "") return 0;
@@ -327,32 +326,24 @@ function Graph() {
         else if (charCode >= 0xac00 && charCode <= 0xd7a3) w += 13 * 0.95;
         else w += 13 * 0.6;
       }
-      return w + 16; // 라벨 내부 패딩
+      return w + 16; 
     };
 
-    // 각 뎁스별로 필요한 실제 [최소 간격] 저장
-    const gapAtDepth = {}; 
+    const gapAtDepth = {};
 
-    // 🔥 [핵심 로직] 각 엣지(선) 단위로 묶어서 간격 계산!
     Object.values(nodeMap).forEach((node) => {
       if (!node.parent || !nodeMap[node.parent]) return;
       
       const pDepth = nodeDepths[node.parent];
       const pNode = nodeMap[node.parent];
       
-      const pNodeWidth = estimateNodeWidth(pNode.keyword); // 출발 노드 폭
-      const relWidth = estimateRelWidth(node.relation); // 해당 선의 텍스트 폭
+      const pNodeWidth = estimateNodeWidth(pNode.keyword); 
+      const relWidth = estimateRelWidth(node.relation); 
       
-      // 텍스트가 있을 경우, 텍스트가 꺾임선을 침범하지 않게 양옆 여유분(buffer) 딱 15px만 부여
-      const buffer = relWidth > 0 ? 15 : 0; 
-      
-      // 가운데서 꺾이는 SmoothStep 특성상, 텍스트를 담을 오른쪽 수평선을 만들려면 그 두 배의 물리적 거리가 필요함
+      const buffer = relWidth > 0 ? 15 : 0;
       const requiredDistanceX = (relWidth + buffer) * 2;
-      
-      // 이 특정 엣지가 요구하는 [출발지 ~ 도착지까지의 최소 X거리]
       const requiredGap = pNodeWidth + requiredDistanceX;
       
-      // 같은 depth에 있는 여러 엣지들 중 "가장 긴 놈"을 최종 기준 간격으로 갱신!
       if (!gapAtDepth[pDepth] || requiredGap > gapAtDepth[pDepth]) {
         gapAtDepth[pDepth] = requiredGap;
       }
@@ -361,15 +352,14 @@ function Graph() {
     const depthX = { 0: 0 };
     const maxD = Math.max(...Object.values(nodeDepths), 0);
     
-    // 최종 산출된 뎁스별 간격 적용
     for (let d = 0; d <= maxD; d++) {
-       // 노드나 라벨이 아예 없어서 너무 짧아지는 걸 방지하기 위해 최소 240px 보장
-       const gap = Math.max(gapAtDepth[d] || 240, 240); 
+       const gap = Math.max(gapAtDepth[d] || 240, 240);
        depthX[d+1] = depthX[d] + gap;
     }
 
     const spacingY = 100;
-    let currentY = 10000;
+    // Y좌표는 0부터 시작해서 아래로 증가 (Top-Down)
+    let currentY = 0; 
 
     const assignPositions = (nodeId, depth, rootId, inheritedColor) => {
       const children = childrenMap[nodeId] || [];
@@ -389,13 +379,18 @@ function Graph() {
 
       let yPos;
       if (children.length === 0) {
-        currentY -= spacingY;
+        // 리프 노드: 현재 커서 위치에 배치하고, 커서를 아래로 이동
         yPos = currentY;
+        currentY += spacingY; 
         subtreeHeight = spacingY;
       } else {
-        const top = positionedMap[childPositions[0].id].y;
-        const bottom = positionedMap[childPositions[childPositions.length - 1].id].y;
-        yPos = (top + bottom) / 2;
+        // 🔥 [핵심 수정] 부모 노드 위치 계산 로직 변경
+        // 기존: (top + bottom) / 2  -> 중앙 정렬 (위아래 대칭 발생)
+        // 변경: childPositions[0].y -> 첫 번째 자식(가장 오래된 자식)과 높이를 맞춤
+        
+        // 이렇게 하면 부모가 항상 그룹의 '상단'에 위치하게 되어, 
+        // 새로운 자식들은 부모보다 '아래쪽'으로만 쌓이게 됩니다.
+        yPos = positionedMap[childPositions[0].id].y;
       }
 
       positionedMap[nodeId] = { x: depthX[depth], y: yPos };
