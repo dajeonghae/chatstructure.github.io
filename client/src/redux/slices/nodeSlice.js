@@ -26,7 +26,8 @@ const nodeSlice = createSlice({
     activeNodeIds: [],
     activeDialogNumbers: [],
     dialogCount: 1,
-    currentScrolledDialog: null, // 🔥 현재 스크롤된 대화 번호
+    currentScrolledDialog: null,
+    selectedIndexNodeId: null,
     nodeColors: {},
   },
 
@@ -221,6 +222,10 @@ const nodeSlice = createSlice({
       state.currentScrolledDialog = action.payload;
     },
 
+    setSelectedIndexNode: (state, action) => {
+      state.selectedIndexNodeId = action.payload;
+    },
+
     resetState: (state, action) => {
       const { nodes, activeNodeIds, activeDialogNumbers, dialogCount, currentScrolledDialog, nodeColors } = action.payload;
       state.nodes = nodes || state.nodes;
@@ -243,5 +248,5 @@ const nodeSlice = createSlice({
   },
 });
 
-export const { toggleActiveDialog, toggleActiveNode, addOrUpdateNode, setParentNode, applyEmbeddingUpdate, setCurrentScrolledDialog, resetState, setNodeKeywords } = nodeSlice.actions;
+export const { toggleActiveDialog, toggleActiveNode, addOrUpdateNode, setParentNode, applyEmbeddingUpdate, setCurrentScrolledDialog, setSelectedIndexNode, resetState, setNodeKeywords } = nodeSlice.actions;
 export default nodeSlice.reducer;

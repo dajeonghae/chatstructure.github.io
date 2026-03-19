@@ -1,78 +1,94 @@
 import { useState } from "react";
+import { useDispatch } from "react-redux";
+import { setSelectedIndexNode } from "../../redux/slices/nodeSlice";
 import styled from "styled-components";
 
 const IndexWrapper = styled.div`
-  width: 60px;
+  width: 180px;
   height: 90%;
-  padding: 20px 0;
+  padding: 24px 0;
   box-sizing: border-box;
   display: flex;
-  justify-content: center;
-  margin-left: 10px;
+  justify-content: flex-start;
+  align-items: flex-start;
+  margin-left: 12px;
 `;
 
 const Track = styled.div`
   position: relative;
-  width: 4px;
+  width: 2px;
   height: 100%;
-  background-color: #E2E8F0;
-  border-radius: 2px;
+  background-color: #EAECEF;
+  border-radius: 1px;
+  flex-shrink: 0;
 `;
 
 const SegmentHighlight = styled.div`
   position: absolute;
   left: 0;
-  width: 4px;
-  border-radius: 2px;
+  width: 2px;
+  border-radius: 1px;
   background-color: ${(props) => props.color};
   z-index: 1;
-  box-shadow: 0 0 4px ${(props) => props.color};
+  opacity: 0.85;
 `;
 
 const MarkerRow = styled.div`
   position: absolute;
-  left: -4px;
+  left: -5px;
   transform: translateY(-50%);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
   z-index: 5;
+
+  &:hover span {
+    color: ${(props) => props.$color};
+    opacity: 1;
+  }
+
+  &:hover div {
+    background-color: ${(props) => props.$color};
+    opacity: 1;
+  }
 `;
 
 const TopicMarker = styled.div`
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background-color: ${(props) => props.color || "#333"};
   flex-shrink: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  outline: ${(props) => props.$selected ? `2px solid ${props.color}` : "none"};
-  outline-offset: 2px;
+  background-color: ${(props) => props.$selected ? props.$color : "#C8CDD4"};
+  transition: background-color 0.2s ease, transform 0.2s ease;
+  transform: ${(props) => props.$selected ? "scale(1.3)" : "scale(1)"};
 `;
 
 const TopicLabel = styled.span`
   font-size: 11px;
-  font-weight: 600;
-  color: ${(props) => props.color || "#333"};
+  font-weight: ${(props) => props.$selected ? "700" : "400"};
+  color: ${(props) => props.$selected ? props.$color : "#9AA0A8"};
   white-space: nowrap;
   pointer-events: none;
+  transition: color 0.2s ease, font-weight 0.2s ease;
+  letter-spacing: -0.01em;
 `;
 
-const ProgressArrow = styled.div`
+const ProgressDot = styled.div`
   position: absolute;
-  left: -11px;
-  transform: translateY(-50%);
-  width: 0;
-  height: 0;
-  border-top: 6px solid transparent;
-  border-bottom: 6px solid transparent;
-  border-left: 8px solid #c92a2a;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #c92a2a;
   transition: top 0.1s ease-out;
   z-index: 10;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px #c92a2a;
 `;
 
 const ChatIndex = ({ scrollPercent, markers = [], onMarkerClick }) => {
+  const dispatch = useDispatch();
   const [selectedNodeId, setSelectedNodeId] = useState(null);
 
   const selectedMarker = markers.find((m) => m.nodeId === selectedNodeId);
@@ -89,8 +105,10 @@ const ChatIndex = ({ scrollPercent, markers = [], onMarkerClick }) => {
   const handleMarkerClick = (marker) => {
     if (selectedNodeId === marker.nodeId) {
       setSelectedNodeId(null);
+      dispatch(setSelectedIndexNode(null));
     } else {
       setSelectedNodeId(marker.nodeId);
+      dispatch(setSelectedIndexNode(marker.nodeId));
       onMarkerClick?.(marker.messageIndex);
     }
   };
@@ -98,6 +116,8 @@ const ChatIndex = ({ scrollPercent, markers = [], onMarkerClick }) => {
   return (
     <IndexWrapper>
       <Track>
+        <ProgressDot style={{ top: `${scrollPercent}%` }} />
+
         {segmentRanges.map((seg, i) => (
           <SegmentHighlight
             key={i}
@@ -106,21 +126,22 @@ const ChatIndex = ({ scrollPercent, markers = [], onMarkerClick }) => {
           />
         ))}
 
-        {markers.map((marker) => (
-          <MarkerRow
-            key={marker.nodeId}
-            style={{ top: `${marker.topPercent}%` }}
-            onClick={() => handleMarkerClick(marker)}
-          >
-            <TopicMarker
-              color={marker.color}
-              $selected={selectedNodeId === marker.nodeId}
-            />
-            <TopicLabel color={marker.color}>{marker.keyword}</TopicLabel>
-          </MarkerRow>
-        ))}
-
-        <ProgressArrow style={{ top: `${scrollPercent}%` }} />
+        {markers.map((marker) => {
+          const isSelected = selectedNodeId === marker.nodeId;
+          return (
+            <MarkerRow
+              key={marker.nodeId}
+              style={{ top: `${marker.topPercent}%` }}
+              onClick={() => handleMarkerClick(marker)}
+              $color={marker.color}
+            >
+              <TopicMarker $color={marker.color} $selected={isSelected} />
+              <TopicLabel $color={marker.color} $selected={isSelected}>
+                {marker.keyword}
+              </TopicLabel>
+            </MarkerRow>
+          );
+        })}
       </Track>
     </IndexWrapper>
   );

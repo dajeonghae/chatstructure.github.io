@@ -13,7 +13,22 @@ import { setNodeColors } from "../../redux/slices/nodeSlice";
 
 
 const edgeTypes = { custom: CustomEdge, bezier: BezierEdge };
-const nodeTypes = { tooltipNode: CustomTooltipNode };
+
+const TopicBgNode = ({ data }) => (
+  <div
+    style={{
+      width: "100%",
+      height: "100%",
+      borderRadius: "20px",
+      backgroundColor: data.color,
+      opacity: 0.12,
+      transition: "opacity 0.5s ease, background-color 0.5s ease",
+      pointerEvents: "none",
+    }}
+  />
+);
+
+const nodeTypes = { tooltipNode: CustomTooltipNode, topicBg: TopicBgNode };
 
 const TOKEN_LIMIT = 15900;
 
@@ -212,6 +227,7 @@ function Graph() {
   const nodesData = useSelector((state) => state.node.nodes) || {};
   const contextMode = useSelector((state) => state.mode.contextMode);
   const nodeColors = useSelector((state) => state.node.nodeColors) || {};
+  const selectedIndexNodeId = useSelector((state) => state.node.selectedIndexNodeId);
 
   const [helpersHeight, setHelpersHeight] = useState(0);
   const helpersInnerRef = useRef(null);
@@ -421,31 +437,79 @@ function Graph() {
       });
     });
 
+    // 선택 토픽 배경 노드
+    if (selectedIndexNodeId) {
+      const topicNodeIds = Object.keys(nodeRootMap).filter(
+        (id) => nodeRootMap[id] === selectedIndexNodeId && positionedMap[id]
+      );
+      if (topicNodeIds.length > 0) {
+        const pad = 24;
+        const nodeH = 44;
+        const xs = topicNodeIds.map((id) => positionedMap[id].x);
+        const ys = topicNodeIds.map((id) => positionedMap[id].y);
+        const widths = topicNodeIds.map((id) => {
+          const str = String(nodeMap[id]?.keyword || "");
+          let w = 0;
+          for (let i = 0; i < str.length; i++) {
+            const c = str.charCodeAt(i);
+            if (c === 32) w += 14 * 0.3;
+            else if (c >= 0xac00 && c <= 0xd7a3) w += 14 * 0.95;
+            else w += 14 * 0.6;
+          }
+          return w + 44;
+        });
+        const minX = Math.min(...xs);
+        const minY = Math.min(...ys);
+        const maxX = Math.max(...xs.map((x, i) => x + widths[i]));
+        const maxY = Math.max(...ys) + nodeH;
+        const bgColor = rootColorMap[selectedIndexNodeId] || "#888";
+
+        updatedNodes.push({
+          id: "__topic_bg__",
+          type: "topicBg",
+          data: { color: bgColor },
+          position: { x: minX - pad, y: minY - pad },
+          style: { width: maxX - minX + pad * 2, height: maxY - minY + pad * 2, zIndex: -1 },
+          draggable: false,
+          selectable: false,
+          connectable: false,
+          zIndex: -1,
+        });
+      }
+    }
+
     Object.keys(positionedMap).forEach((id) => {
       const node = nodeMap[id];
       const isActive = activeNodeIds.includes(id);
       const nodeColor = rootColorMap[id] || rootColorMap[node.parent] || "#333";
+      const rootId = nodeRootMap[id];
+      const isNodeHighlighted = !selectedIndexNodeId || rootId === selectedIndexNodeId;
 
       updatedNodes.push({
         id,
         type: "tooltipNode",
-        data: { label: node.keyword, color: nodeColor, isActive },
+        data: { label: node.keyword, color: nodeColor, isActive, isIndexHighlighted: isNodeHighlighted },
         position: positionedMap[id],
         sourcePosition: "right",
         targetPosition: "left",
       });
     });
 
+    const grayEdges = [];
+    const coloredEdges = [];
+
     Object.values(nodeMap).forEach((node) => {
       if (!node?.parent || !nodeMap[node.parent]) return;
 
       const isActive = activeNodeIds.includes(node.id);
       const parentIsActive = activeNodeIds.includes(node.parent);
-      const edgeOpacity = contextMode && !(isActive || parentIsActive) ? 0.2 : 1;
       const rootId = nodeRootMap[node.id];
-      const edgeColor = rootColorMap[rootId] || "#333";
+      const isHighlighted = !selectedIndexNodeId || rootId === selectedIndexNodeId;
+      const edgeColor = isHighlighted ? (rootColorMap[rootId] || "#333") : "#BEBEBE";
+      const edgeOpacity = contextMode && !(isActive || parentIsActive) ? 0.2 : 1;
+      const strokeWidth = 2;
 
-      updatedEdges.push({
+      const edge = {
         id: `${node.parent}-${node.id}`,
         source: node.parent,
         target: node.id,
@@ -453,21 +517,30 @@ function Graph() {
         type: "custom",
         animated: false,
         style: {
-          strokeWidth: 2,
+          strokeWidth,
           stroke: edgeColor,
           opacity: edgeOpacity,
-          transition: "opacity 0.2s ease",
+          transition: "none",
         },
         data: { sourceId: node.parent, targetId: node.id, isActive, contextMode, activeNodeIds },
         labelStyle: { fontWeight: 600, fontSize: 14, opacity: edgeOpacity },
         markerEnd: { type: "arrowclosed", color: edgeColor },
-      });
+      };
+
+      if (isHighlighted && selectedIndexNodeId) {
+        coloredEdges.push(edge);
+      } else {
+        grayEdges.push(edge);
+      }
     });
+
+    // 선택된 토픽 간선을 마지막에 배치해서 앞에 렌더링
+    updatedEdges.push(...grayEdges, ...coloredEdges);
 
     setNodes(updatedNodes);
     setEdges(updatedEdges);
     dispatch(setNodeColors(rootColorMap));
-  }, [nodesData, activeNodeIds, contextMode, dispatch]);
+  }, [nodesData, activeNodeIds, contextMode, selectedIndexNodeId, dispatch]);
 
   useEffect(() => {
     const measure = () => {

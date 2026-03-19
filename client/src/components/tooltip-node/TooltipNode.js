@@ -141,12 +141,12 @@ const TooltipNode = ({ data, id }) => {
       <Handle
         type="source"
         position={Position.Right}
-        style={{ background: data.color}}
+        style={{ background: data.isIndexHighlighted !== false ? data.color : "#BEBEBE", transition: "background 0.2s ease" }}
       />
       <Handle
         type="target"
         position={Position.Left}
-        style={{ background: data.color}}
+        style={{ background: data.isIndexHighlighted !== false ? data.color : "#BEBEBE", transition: "background 0.2s ease" }}
       />
     </TooltipContainer>
   );
