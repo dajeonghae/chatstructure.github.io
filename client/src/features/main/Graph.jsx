@@ -60,7 +60,7 @@ const GraphPanel = styled.div`
 const HelperContainer = styled.div`
   display: flex;
   flex-direction: row;
-  gap: 20px;
+  gap: 10px;
   align-items: stretch;
   width: 100%;
 `;
@@ -140,7 +140,7 @@ const Chip = styled.span`
 
 const SlideSection = styled.div`
   height: ${(p) => p.$h}px;
-  padding: ${(p) => (p.$open ? "8px 0" : "0")};
+  padding: ${(p) => (p.$open ? "8px 10px" : "0")};
   box-sizing: content-box;
   transition:
     height 280ms ease,
