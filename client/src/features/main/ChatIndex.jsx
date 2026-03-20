@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useDispatch } from "react-redux";
 import { setSelectedIndexNode } from "../../redux/slices/nodeSlice";
 import styled from "styled-components";
@@ -20,7 +20,6 @@ const IndexWrapper = styled.div`
 
 const Track = styled.div`
   position: relative;
-  /* 선 굵기를 3px로 증가 */
   width: 3px; 
   height: 90%;
   flex-shrink: 0;
@@ -36,15 +35,15 @@ const TrackSegment = styled.div`
 
 const SegmentHighlight = styled.div`
   position: absolute;
-  /* MarkerRow의 left(-6px)에서 왼쪽 테두리(3px)만큼 들어간 위치 */
-  left: -3px; 
-  /* 전체 12px에서 양쪽 테두리 6px을 뺀 순수 내부 너비 */
+  left: -4px; 
   width: 6px; 
-  /* 알약 모양을 위해 너비의 절반값을 radius로 설정 */
   border-radius: 3px; 
   background-color: ${(props) => props.color};
   z-index: 1;
-  opacity: 1; /* 사진처럼 진하게 물들게 하려면 1 (기존처럼 살짝 투명하게 하려면 0.85 유지) */
+  
+  /* 위치(top)는 고정되어 있으므로 height만 스르륵 길어지도록 설정 */
+  /* transform-origin을 설정하지 않아도 top 기준이므로 기본적으로 아래로 자라납니다 */
+  transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.4s ease;
 `;
 
 const MarkerRow = styled.div`
@@ -67,8 +66,8 @@ const MarkerRow = styled.div`
 
 const TopicMarker = styled.div`
   box-sizing: border-box;
-  width: ${(props) => props.$selected ? "6px" : "12px"}; 
-  height: ${(props) => props.$selected ? "6px" : "12px"};
+  width: ${(props) => props.$selected ? "5px" : "12px"}; 
+  height: ${(props) => props.$selected ? "5px" : "12px"};
   margin: ${(props) => props.$selected ? "3px" : "0"};
   
   border-radius: 50%;
@@ -95,7 +94,6 @@ const TopicLabel = styled.span`
 
 const ProgressDot = styled.div`
   position: absolute;
-  left: 1.5px; 
   transform: translate(-50%, -50%);
   width: 6px;
   height: 6px;
@@ -103,6 +101,7 @@ const ProgressDot = styled.div`
   background-color: #c92a2a;
   transition: top 0.1s ease-out;
   z-index: 10;
+  left: -1px; 
   box-shadow: 0 0 0 2px #fff, 0 0 0 3px #c92a2a;
 `;
 
@@ -110,8 +109,43 @@ const ChatIndex = ({ scrollPercent, markers = [], onMarkerClick }) => {
   const dispatch = useDispatch();
   const [selectedNodeId, setSelectedNodeId] = useState(null);
 
-  const selectedMarker = markers.find((m) => m.nodeId === selectedNodeId);
+  // 애니메이션 포인트 2: 현재 그려지고 있는 트랙들의 상태를 관리하는 새로운 State
+  const [animatingSegments, setAnimatingSegments] = useState([]);
 
+  // 애니메이션 포인트 3: 클릭한 마커가 바뀔 때마다 애니메이션 트리거
+useEffect(() => {
+    setAnimatingSegments([]);
+    
+    const newSelectedMarker = markers.find((m) => m.nodeId === selectedNodeId);
+    
+    if (newSelectedMarker) {
+      const color = newSelectedMarker.color;
+      
+      // A. 시작 상태: 각 영역의 '원래 시작점(top)'에서 '높이 0'으로 시작
+      const initialStates = newSelectedMarker.segments.map((s, i) => ({
+        key: `${newSelectedMarker.nodeId}-${i}`,
+        color,
+        top: s.topPercent, // 마커 위치가 아닌, 각 영역의 시작점!
+        height: 0,         // 처음엔 보이지 않음 (높이 0)
+      }));
+      
+      setAnimatingSegments(initialStates);
+      
+      // B. 도착 상태: 리액트 렌더링 직후 높이를 원래 크기로 주욱 늘림
+      setTimeout(() => {
+        const finalStates = newSelectedMarker.segments.map((s, i) => ({
+          key: `${newSelectedMarker.nodeId}-${i}`,
+          color,
+          top: s.topPercent, // 위치는 그대로 고정
+          height: Math.max((s.bottomPercent ?? s.topPercent) - s.topPercent, 0.5), // 원래 높이로 쭈욱 늘어남!
+        }));
+        
+        setAnimatingSegments(finalStates);
+      }, 10);
+    }
+  }, [selectedNodeId, markers]);
+
+  // 회색 트랙 세그먼트 계산 로직 (동일)
   const trackSegments = (() => {
     const percents = [...markers].sort((a, b) => a.topPercent - b.topPercent).map(m => m.topPercent);
     if (percents.length === 0) return [{ top: 0, height: 100 }];
@@ -126,15 +160,6 @@ const ChatIndex = ({ scrollPercent, markers = [], onMarkerClick }) => {
     addSeg(percents[percents.length - 1], 100);
     
     return segs;
-  })();
-
-  const segmentRanges = (() => {
-    const segs = selectedMarker?.segments;
-    if (!segs || segs.length === 0) return [];
-    return segs.map((s) => ({
-      top: s.topPercent,
-      height: Math.max((s.bottomPercent ?? s.topPercent) - s.topPercent, 0.5),
-    }));
   })();
 
   const handleMarkerClick = (marker) => {
@@ -156,11 +181,12 @@ const ChatIndex = ({ scrollPercent, markers = [], onMarkerClick }) => {
         ))}
         <ProgressDot style={{ top: `${scrollPercent}%` }} />
 
-        {segmentRanges.map((seg, i) => (
+        {/* 애니메이션 포인트 4: segmentRanges 대신 animatingSegments state를 렌더링 */}
+        {animatingSegments.map((seg) => (
           <SegmentHighlight
-            key={i}
+            key={seg.key} // 고유 키 사용
             style={{ top: `${seg.top}%`, height: `${seg.height}%` }}
-            color={selectedMarker?.color}
+            color={seg.color}
           />
         ))}
 
