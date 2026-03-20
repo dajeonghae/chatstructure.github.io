@@ -14,21 +14,23 @@ const Container = styled.div`
 const ChatSection = styled.div`
   display: flex;
   flex-direction: column;
-  align-items: center;
-  flex: 1;
+  flex: 0 1 auto;
+  min-width: 400px;
   height: 100%;
 `;
 
 const GraphSection = styled.div`
   display: flex;
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 300px;
   height: 100%;
   min-height: 0;
 `;
 
 const ChatContainer = styled.div`
   display: flex;
-  width: 1000px;
+  width: 1240px;
+  max-width: 100%;
   height: 100%;
   box-sizing: border-box;
 `;

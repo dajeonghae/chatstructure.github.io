@@ -30,7 +30,7 @@ const ChatContainer = styled.div`
   flex: 1;
   height: 100%;
   position: relative;
-  padding: 20px 0 50px;
+  padding: 20px 90px 50px;
   box-sizing: border-box;
 `;
 

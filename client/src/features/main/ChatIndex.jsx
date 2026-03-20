@@ -13,7 +13,6 @@ const IndexWrapper = styled.div`
   align-items: flex-start;
   border-left: 1.5px solid #E8EAED;
   overflow: visible;
-  transform: translateX(100px);
   box-shadow: 18px 0px 24px -10px rgba(149, 157, 165, 0.15);
   z-index: 10;
   position: relative;

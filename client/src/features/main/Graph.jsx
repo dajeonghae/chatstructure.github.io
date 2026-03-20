@@ -53,8 +53,6 @@ const GraphPanel = styled.div`
   flex: 1 1 auto;
   min-height: 0;
   background: #FCFCFC;
-  border: 1px solid #eee;
-  border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 2px 6px rgba(0,0,0,0.12);
 `;
