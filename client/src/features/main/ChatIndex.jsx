@@ -4,13 +4,13 @@ import { setSelectedIndexNode } from "../../redux/slices/nodeSlice";
 import styled from "styled-components";
 
 const IndexWrapper = styled.div`
-  width: 220px;
+  width: 270px;
   align-self: stretch;
   flex-shrink: 0;
-  padding: 28px 0 28px 20px;
+  padding: 28px 0;
   box-sizing: border-box;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   border-left: 1.5px solid #E8EAED;
   overflow: visible;
   box-shadow: 18px 0px 24px -10px rgba(149, 157, 165, 0.15);
@@ -20,26 +20,36 @@ const IndexWrapper = styled.div`
 
 const Track = styled.div`
   position: relative;
-  width: 2px;
-  height: 100%;
-  background-color: #EAECEF;
-  border-radius: 1px;
+  /* 선 굵기를 3px로 증가 */
+  width: 3px; 
+  height: 90%;
   flex-shrink: 0;
+`;
+
+const TrackSegment = styled.div`
+  position: absolute;
+  left: -2px;
+  width: 3px; 
+  border-radius: 1.5px;
+  background-color: #D9DCDF;
 `;
 
 const SegmentHighlight = styled.div`
   position: absolute;
-  left: 0;
-  width: 2px;
-  border-radius: 1px;
+  /* MarkerRow의 left(-6px)에서 왼쪽 테두리(3px)만큼 들어간 위치 */
+  left: -3px; 
+  /* 전체 12px에서 양쪽 테두리 6px을 뺀 순수 내부 너비 */
+  width: 6px; 
+  /* 알약 모양을 위해 너비의 절반값을 radius로 설정 */
+  border-radius: 3px; 
   background-color: ${(props) => props.color};
   z-index: 1;
-  opacity: 0.85;
+  opacity: 1; /* 사진처럼 진하게 물들게 하려면 1 (기존처럼 살짝 투명하게 하려면 0.85 유지) */
 `;
 
 const MarkerRow = styled.div`
   position: absolute;
-  left: -5px;
+  left: -6px; 
   display: flex;
   align-items: center;
   gap: 10px;
@@ -48,38 +58,44 @@ const MarkerRow = styled.div`
 
   &:hover span {
     color: ${(props) => props.$color};
-    opacity: 1;
   }
 
-  &:hover div {
-    background-color: ${(props) => props.$color};
-    opacity: 1;
+  &:hover > div {
+    border-color: ${(props) => props.$color};
   }
 `;
 
 const TopicMarker = styled.div`
-  width: 10px;
-  height: 10px;
+  box-sizing: border-box;
+  width: ${(props) => props.$selected ? "6px" : "12px"}; 
+  height: ${(props) => props.$selected ? "6px" : "12px"};
+  margin: ${(props) => props.$selected ? "3px" : "0"};
+  
   border-radius: 50%;
   flex-shrink: 0;
-  background-color: ${(props) => props.$selected ? props.$color : "#C8CDD4"};
-  transition: background-color 0.2s ease, transform 0.2s ease;
-  transform: ${(props) => props.$selected ? "scale(1.3)" : "scale(1)"};
+  background-color: ${(props) => props.$selected ? props.$color : "#fff"};
+  border: ${(props) => props.$selected ? "none" : "3px solid #C8CDD4"};
+  box-shadow: ${(props) => props.$selected ? "none" : "0 0 0 4px #fff"};
+  transition: all 0.2s ease;
 `;
 
 const TopicLabel = styled.span`
-  font-size: 11px;
-  font-weight: ${(props) => props.$selected ? "700" : "400"};
-  color: ${(props) => props.$selected ? props.$color : "#9AA0A8"};
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: #fff;
+  color: ${(props) => props.$selected ? props.$color : "#606368"};
+  box-shadow: 0 2px 8px 0 rgba(99, 99, 99, 0.1);
+  font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
   pointer-events: none;
-  transition: color 0.2s ease, font-weight 0.2s ease;
+  transition: color 0.2s ease, border-color 0.2s ease;
   letter-spacing: -0.01em;
 `;
 
 const ProgressDot = styled.div`
   position: absolute;
-  left: 50%;
+  left: 1.5px; 
   transform: translate(-50%, -50%);
   width: 6px;
   height: 6px;
@@ -95,6 +111,22 @@ const ChatIndex = ({ scrollPercent, markers = [], onMarkerClick }) => {
   const [selectedNodeId, setSelectedNodeId] = useState(null);
 
   const selectedMarker = markers.find((m) => m.nodeId === selectedNodeId);
+
+  const trackSegments = (() => {
+    const percents = [...markers].sort((a, b) => a.topPercent - b.topPercent).map(m => m.topPercent);
+    if (percents.length === 0) return [{ top: 0, height: 100 }];
+    
+    const segs = [];
+    const addSeg = (start, end) => {
+      segs.push({ top: start, height: end - start }); 
+    };
+    
+    addSeg(0, percents[0]);
+    for (let i = 0; i < percents.length - 1; i++) addSeg(percents[i], percents[i + 1]);
+    addSeg(percents[percents.length - 1], 100);
+    
+    return segs;
+  })();
 
   const segmentRanges = (() => {
     const segs = selectedMarker?.segments;
@@ -119,13 +151,16 @@ const ChatIndex = ({ scrollPercent, markers = [], onMarkerClick }) => {
   return (
     <IndexWrapper>
       <Track>
+        {trackSegments.map((seg, i) => (
+          <TrackSegment key={i} style={{ top: `${seg.top}%`, height: `${seg.height}%` }} />
+        ))}
         <ProgressDot style={{ top: `${scrollPercent}%` }} />
 
         {segmentRanges.map((seg, i) => (
           <SegmentHighlight
             key={i}
             style={{ top: `${seg.top}%`, height: `${seg.height}%` }}
-            color={selectedMarker.color}
+            color={selectedMarker?.color}
           />
         ))}
 
