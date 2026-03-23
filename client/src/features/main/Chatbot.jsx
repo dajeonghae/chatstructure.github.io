@@ -224,7 +224,7 @@ function Chatbot() {
           Math.min(100, (topPx / totalScrollableHeight) * 100)
         );
 
-        // 각 dialog의 위치 계산
+        
         const rawSegments = sorted
           .map((num) => {
             const msgIndex = (num - 1) * 2;
