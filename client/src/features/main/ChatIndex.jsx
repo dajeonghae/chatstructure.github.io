@@ -39,8 +39,8 @@ const SegmentHighlight = styled.div`
   width: 7px; 
   border-radius: 3px; 
   background-color: ${(props) => props.color};
-  z-index: 1;
-  
+  z-index: 6;
+
   /* 위치(top)는 고정되어 있으므로 height만 스르륵 길어지도록 설정 */
   /* transform-origin을 설정하지 않아도 top 기준이므로 기본적으로 아래로 자라납니다 */
   transition: height 0.4s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.4s ease;
