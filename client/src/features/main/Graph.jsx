@@ -614,9 +614,9 @@ function Graph() {
         <ToggleContainer>
           <ToggleButton active={contextMode} onToggle={handleToggle} />
         </ToggleContainer>
-        <VisContainer>
+        {/* <VisContainer>
           <VisButton />
-        </VisContainer>
+        </VisContainer> */}
         <ContextButton />
         <ReactFlow
           nodes={nodes}

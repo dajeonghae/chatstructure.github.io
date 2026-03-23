@@ -48,7 +48,8 @@ const SegmentHighlight = styled.div`
 
 const MarkerRow = styled.div`
   position: absolute;
-  left: -6px; 
+  left: -6px;
+  transform: translateY(-40%);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -130,26 +131,36 @@ const ChatIndex = ({ scrollPercent, markers = [], graphNodeSegments = [], graphN
   };
 
   // ChatIndex 마커 클릭 → topic 전체 segments 애니메이션
+  const growTimerRef = useRef(null);
   useEffect(() => {
+    if (growTimerRef.current) clearTimeout(growTimerRef.current);
+
     const newSelectedMarker = markers.find((m) => m.nodeId === selectedNodeId);
     if (!newSelectedMarker) {
       if (graphNodeSegments.length === 0) animateOut();
       return;
     }
     cancelClear();
+
+    // 기존 세그먼트 즉시 접기
+    setAnimatingSegments((prev) => prev.map((s) => ({ ...s, height: 0 })));
+
     const color = newSelectedMarker.color;
-    setAnimatingSegments(newSelectedMarker.segments.map((s, i) => ({
-      key: `topic-${newSelectedMarker.nodeId}-${i}`,
-      color, top: s.topPercent, height: 0,
-    })));
-    setTimeout(() => {
+    // 원이 다 줄어든 뒤(200ms) 새 세그먼트 성장 시작
+    growTimerRef.current = setTimeout(() => {
       setAnimatingSegments(newSelectedMarker.segments.map((s, i) => ({
         key: `topic-${newSelectedMarker.nodeId}-${i}`,
-        color,
-        top: s.topPercent,
-        height: Math.max((s.bottomPercent ?? s.topPercent) - s.topPercent, 0.5),
+        color, top: s.topPercent, height: 0,
       })));
-    }, 10);
+      setTimeout(() => {
+        setAnimatingSegments(newSelectedMarker.segments.map((s, i) => ({
+          key: `topic-${newSelectedMarker.nodeId}-${i}`,
+          color,
+          top: s.topPercent,
+          height: Math.max((s.bottomPercent ?? s.topPercent) - s.topPercent, 0.5),
+        })));
+      }, 16);
+    }, 200);
   }, [selectedNodeId, markers]);
 
   // root 클릭 → 모든 topic 각자의 색으로 highlight
