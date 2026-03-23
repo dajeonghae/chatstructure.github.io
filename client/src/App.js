@@ -7,7 +7,7 @@ import Main from "./pages/main";
 function App() {
   return (
     <Provider store={store}>
-      <BrowserRouter>
+      <BrowserRouter basename="/chatstructure">
         <Routes>
           <Route path="/" element={<Main />} />
         </Routes>
