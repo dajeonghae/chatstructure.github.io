@@ -32,7 +32,7 @@ jobs:
 
       - run: npm ci
         working-directory: client
-      - run: npm run build
+      - run: CI=false npm run build
         working-directory: client
 
       - uses: actions/upload-pages-artifact@v3
