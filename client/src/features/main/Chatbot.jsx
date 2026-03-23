@@ -132,6 +132,7 @@ function Chatbot() {
   const [allTopicsHighlighted, setAllTopicsHighlighted] = useState(false);
 
   const scrollContainerRef = useRef(null);
+  const contentScaleRef = useRef({ min: 0, max: 100 });
   const messagesEndRef = useRef(null);
   const messageRefs = useRef([]);
   const fileInputRef = useRef(null);
@@ -151,14 +152,9 @@ function Chatbot() {
   const currentNodeId = activeNodeIds[activeNodeIds.length - 1] || "root";
 
   const handleScroll = (e) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    const { scrollTop, scrollHeight } = e.target;
 
-    if (scrollHeight <= clientHeight) {
-      setScrollPercent(0);
-      return;
-    }
-
-    const percent = (scrollTop / (scrollHeight - clientHeight)) * 100;
+    const percent = (scrollTop / scrollHeight) * 100;
     setScrollPercent(percent);
   };
 
@@ -196,7 +192,7 @@ function Chatbot() {
       (node) => node.parent === "root" && node.id !== "root"
     );
 
-    const totalScrollableHeight = Math.max(1, container.scrollHeight - container.clientHeight);
+    const totalScrollableHeight = Math.max(1, container.scrollHeight);
 
     const containerRect = container.getBoundingClientRect();
 
@@ -271,7 +267,26 @@ function Chatbot() {
       })
       .filter(Boolean);
 
-    setTopicMarkers(markers);
+    // 실제 비율 간격은 유지하면서 전체를 0%~100%로 늘려 트랙에 꽉 채움
+    const allPercents = markers.flatMap((m) => [
+      m.topPercent,
+      ...m.segments.flatMap((s) => [s.topPercent, s.bottomPercent ?? s.topPercent]),
+    ]);
+    const minP = markers.length > 0 ? Math.min(...allPercents) : 0;
+    const maxP = markers.length > 0 ? Math.max(...allPercents) : 100;
+    const range = maxP - minP || 1;
+    contentScaleRef.current = { min: minP, max: maxP, range };
+    const scale = (v) => ((v - minP) / range) * 100;
+
+    setTopicMarkers(markers.map((m) => ({
+      ...m,
+      topPercent: scale(m.topPercent),
+      segments: m.segments.map((s) => ({
+        ...s,
+        topPercent: scale(s.topPercent),
+        bottomPercent: s.bottomPercent != null ? scale(s.bottomPercent) : undefined,
+      })),
+    })));
   };
 
   const handleMarkerClick = (nodeId, messageIndex) => {
@@ -287,8 +302,10 @@ function Chatbot() {
   };
 
   const computeSegmentsForDialogs = (dialogNumbers, container) => {
-    const totalScrollableHeight = Math.max(1, container.scrollHeight - container.clientHeight);
+    const totalScrollableHeight = Math.max(1, container.scrollHeight);
     const containerRect = container.getBoundingClientRect();
+    const { min, range } = contentScaleRef.current;
+    const scale = (v) => ((v - min) / (range || 1)) * 100;
     return dialogNumbers
       .map((num) => {
         const msgIndex = (num - 1) * 2;
@@ -300,10 +317,12 @@ function Chatbot() {
         const bottomEl = aiEl || userEl;
         const bottomRect = bottomEl.getBoundingClientRect();
         const bottomPxSeg = bottomRect.bottom - containerRect.top + container.scrollTop;
+        const rawTop = (topPxSeg / totalScrollableHeight) * 100;
+        const rawBottom = (bottomPxSeg / totalScrollableHeight) * 100;
         return {
           dialogNum: num,
-          topPercent: Math.max(0, Math.min(100, (topPxSeg / totalScrollableHeight) * 100)),
-          bottomPercent: Math.max(0, Math.min(100, (bottomPxSeg / totalScrollableHeight) * 100)),
+          topPercent: Math.max(0, Math.min(100, scale(rawTop))),
+          bottomPercent: Math.max(0, Math.min(100, scale(rawBottom))),
           messageIndex: msgIndex,
         };
       })

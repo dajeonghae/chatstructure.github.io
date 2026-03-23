@@ -569,7 +569,7 @@ function Graph() {
       const isActiveEdge = isHighlighted && highlightedRootIds.size > 0;
       const edgeId = `${node.parent}-${node.id}`;
       const isPathEdge = pathEdgeIds.has(edgeId);
-      const edgeColor = isPathEdge ? (rootColorMap[rootId] || "#333") : "#BEBEBE";
+      const edgeColor = (isPathEdge || activeNodeIds.length === 0) ? (rootColorMap[rootId] || "#333") : "#BEBEBE";
       const edgeOpacity = contextMode && !(isActive || parentIsActive) ? 0.2 : 1;
       const strokeWidth = isPathEdge ? 4 : 2;
 
