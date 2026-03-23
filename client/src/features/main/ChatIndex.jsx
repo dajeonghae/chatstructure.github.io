@@ -7,10 +7,10 @@ const IndexWrapper = styled.div`
   width: 270px;
   align-self: stretch;
   flex-shrink: 0;
-  padding: 28px 0;
+  padding: 85px 0 28px 0;
   box-sizing: border-box;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   border-left: 1.5px solid #E8EAED;
   overflow: visible;
   box-shadow: 18px 0px 24px -10px rgba(149, 157, 165, 0.15);
@@ -21,7 +21,7 @@ const IndexWrapper = styled.div`
 const Track = styled.div`
   position: relative;
   width: 3px; 
-  height: 90%;
+  height: 87%;
   flex-shrink: 0;
 `;
 
@@ -231,7 +231,7 @@ const ChatIndex = ({ scrollPercent, markers = [], graphNodeSegments = [], graphN
       dispatch(setSelectedIndexNode(null));
     } else {
       dispatch(setSelectedIndexNode(marker.nodeId));
-      onMarkerClick?.(marker.messageIndex);
+      onMarkerClick?.(marker.nodeId, marker.messageIndex);
     }
   };
 
@@ -269,6 +269,7 @@ const ChatIndex = ({ scrollPercent, markers = [], graphNodeSegments = [], graphN
           );
         })}
       </Track>
+
     </IndexWrapper>
   );
 };

@@ -438,82 +438,102 @@ function Graph() {
     // root 노드는 항상 중립 색상
     rootColorMap["root"] = "#606368";
 
-    // 활성화된 노드들 배경 — 각 노드마다 개별 rect (모든 모드 통합)
-    const positionedActiveIds = activeNodeIds.filter((id) => positionedMap[id]);
-    if (!contextMode && positionedActiveIds.length > 0) {
-      const pad = 24;
-      const nodeH = 44;
-      positionedActiveIds.forEach((id) => {
-        const x = positionedMap[id].x;
-        const y = positionedMap[id].y;
-        const str = String(nodeMap[id]?.keyword || "");
-        let w = 0;
-        for (let i = 0; i < str.length; i++) {
-          const c = str.charCodeAt(i);
-          if (c === 32) w += 14 * 0.3;
-          else if (c >= 0xac00 && c <= 0xd7a3) w += 14 * 0.95;
-          else w += 14 * 0.6;
-        }
-        const nodeW = w + 44;
-        const bgColor = rootColorMap[nodeRootMap[id]] || "#888";
-        updatedNodes.push({
-          id: `__active_bg_${id}__`,
-          type: "topicBg",
-          data: { color: bgColor },
-          position: { x: x - pad, y: y - pad },
-          style: { width: nodeW + pad * 2, height: nodeH + pad * 2, zIndex: -1 },
-          draggable: false, selectable: false, connectable: false, zIndex: -1,
-        });
-      });
-    }
-
-    // 선택 토픽 배경 노드
-    if (selectedIndexNodeId) {
-      const topicNodeIds = Object.keys(nodeRootMap).filter(
-        (id) => nodeRootMap[id] === selectedIndexNodeId && positionedMap[id]
-      );
-      if (topicNodeIds.length > 0) {
-        const pad = 24;
-        const nodeH = 44;
-        const xs = topicNodeIds.map((id) => positionedMap[id].x);
-        const ys = topicNodeIds.map((id) => positionedMap[id].y);
-        const widths = topicNodeIds.map((id) => {
-          const str = String(nodeMap[id]?.keyword || "");
-          let w = 0;
-          for (let i = 0; i < str.length; i++) {
-            const c = str.charCodeAt(i);
-            if (c === 32) w += 14 * 0.3;
-            else if (c >= 0xac00 && c <= 0xd7a3) w += 14 * 0.95;
-            else w += 14 * 0.6;
-          }
-          return w + 44;
-        });
-        const minX = Math.min(...xs);
-        const minY = Math.min(...ys);
-        const maxX = Math.max(...xs.map((x, i) => x + widths[i]));
-        const maxY = Math.max(...ys) + nodeH;
-        const bgColor = rootColorMap[selectedIndexNodeId] || "#888";
-
-        updatedNodes.push({
-          id: "__topic_bg__",
-          type: "topicBg",
-          data: { color: bgColor },
-          position: { x: minX - pad, y: minY - pad },
-          style: { width: maxX - minX + pad * 2, height: maxY - minY + pad * 2, zIndex: -1 },
-          draggable: false,
-          selectable: false,
-          connectable: false,
-          zIndex: -1,
+    // 배경 rect: 활성 노드를 column(같은 x)별로 묶고, 사이에 비활성 노드 없는 것만 합침
+    const highlightSet = new Set();
+    if (!contextMode) {
+      activeNodeIds.forEach((id) => { if (positionedMap[id]) highlightSet.add(id); });
+      if (selectedIndexNodeId) {
+        Object.keys(nodeRootMap).forEach((id) => {
+          if (nodeRootMap[id] === selectedIndexNodeId && positionedMap[id]) highlightSet.add(id);
         });
       }
     }
+    const highlightedRootIds = new Set([...highlightSet].map((id) => nodeRootMap[id]).filter(Boolean));
+
+    const calcNodeW = (id) => {
+      const str = String(nodeMap[id]?.keyword || "");
+      let w = 0;
+      for (let i = 0; i < str.length; i++) {
+        const c = str.charCodeAt(i);
+        if (c === 32) w += 14 * 0.3;
+        else if (c >= 0xac00 && c <= 0xd7a3) w += 14 * 0.95;
+        else w += 14 * 0.6;
+      }
+      return w + 44;
+    };
+
+    const pad = 24;
+    const nodeH = 44;
+
+    // 비활성 노드 center point (같은 rootId 내 충돌 검사용)
+    const nonActiveCenters = Object.keys(positionedMap)
+      .filter((id) => !highlightSet.has(id))
+      .map((id) => ({
+        rootId: nodeRootMap[id],
+        cx: positionedMap[id].x + calcNodeW(id) / 2,
+        cy: positionedMap[id].y + nodeH / 2,
+      }));
+
+    // 활성 노드 개별 rect
+    let bgRects = [];
+    highlightSet.forEach((id) => {
+      bgRects.push({
+        rootId: nodeRootMap[id],
+        x1: positionedMap[id].x - pad,
+        y1: positionedMap[id].y - pad,
+        x2: positionedMap[id].x + calcNodeW(id) + pad,
+        y2: positionedMap[id].y + nodeH + pad,
+      });
+    });
+
+    // 합쳤을 때 같은 rootId 비활성 노드 center가 들어오지 않으면 merge
+    const canMerge = (a, b) => {
+      if (a.rootId !== b.rootId) return false;
+      const mx1 = Math.min(a.x1, b.x1), my1 = Math.min(a.y1, b.y1);
+      const mx2 = Math.max(a.x2, b.x2), my2 = Math.max(a.y2, b.y2);
+      return !nonActiveCenters.some(
+        (n) => n.rootId === a.rootId && n.cx > mx1 && n.cx < mx2 && n.cy > my1 && n.cy < my2
+      );
+    };
+
+    let didMerge = true;
+    while (didMerge) {
+      didMerge = false;
+      for (let i = 0; i < bgRects.length && !didMerge; i++) {
+        for (let j = i + 1; j < bgRects.length && !didMerge; j++) {
+          if (canMerge(bgRects[i], bgRects[j])) {
+            bgRects.push({
+              rootId: bgRects[i].rootId,
+              x1: Math.min(bgRects[i].x1, bgRects[j].x1),
+              y1: Math.min(bgRects[i].y1, bgRects[j].y1),
+              x2: Math.max(bgRects[i].x2, bgRects[j].x2),
+              y2: Math.max(bgRects[i].y2, bgRects[j].y2),
+            });
+            bgRects.splice(j, 1);
+            bgRects.splice(i, 1);
+            didMerge = true;
+          }
+        }
+      }
+    }
+
+    bgRects.forEach((rect, i) => {
+      updatedNodes.push({
+        id: `__bg_${rect.rootId}_${i}__`,
+        type: "topicBg",
+        data: { color: rootColorMap[rect.rootId] || "#888" },
+        position: { x: rect.x1, y: rect.y1 },
+        style: { width: rect.x2 - rect.x1, height: rect.y2 - rect.y1, zIndex: -1 },
+        draggable: false, selectable: false, connectable: false, zIndex: -1,
+      });
+    });
 
     Object.keys(positionedMap).forEach((id) => {
       const node = nodeMap[id];
       const isActive = activeNodeIds.includes(id);
       const nodeColor = rootColorMap[id] || rootColorMap[node.parent] || "#333";
       const rootId = nodeRootMap[id];
-      const isNodeHighlighted = !selectedIndexNodeId || rootId === selectedIndexNodeId;
+      const isNodeHighlighted = highlightedRootIds.size === 0 || highlightedRootIds.has(rootId);
 
       updatedNodes.push({
         id,
@@ -534,7 +554,7 @@ function Graph() {
       const isActive = activeNodeIds.includes(node.id);
       const parentIsActive = activeNodeIds.includes(node.parent);
       const rootId = nodeRootMap[node.id];
-      const isHighlighted = !selectedIndexNodeId || rootId === selectedIndexNodeId;
+      const isHighlighted = highlightedRootIds.size === 0 || highlightedRootIds.has(rootId);
       const edgeColor = isHighlighted ? (rootColorMap[rootId] || "#333") : "#BEBEBE";
       const edgeOpacity = contextMode && !(isActive || parentIsActive) ? 0.2 : 1;
       const strokeWidth = 2;

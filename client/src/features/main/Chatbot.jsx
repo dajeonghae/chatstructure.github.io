@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import styled from "styled-components";
 import { useDispatch, useSelector } from "react-redux";
 import { sendMessageToApi } from "../../services/chatbotService.js";
-import { setCurrentScrolledDialog, clearActiveSelections } from "../../redux/slices/nodeSlice.js";
+import { setCurrentScrolledDialog, clearActiveSelections, toggleActiveNode } from "../../redux/slices/nodeSlice.js";
 import { parseConversationHistory } from "../../utils/parseConversationHistory.js";
 import {
   buildFullSnapshot,
@@ -14,7 +14,6 @@ import axios from "axios";
 import DialogPair from "../../components/textBox/DialogPair.jsx";
 import ChatIndex from "./ChatIndex.jsx";
 import ChatInput from "../../components/textBox/ChatInput.jsx";
-import TopButton from "../../components/button/TopButton.jsx";
 
 // rawSegments에서 canMerge 조건 만족하는 연속 항목을 하나의 segment로 합침
 const mergeSegments = (rawSegments, canMerge) => {
@@ -68,6 +67,39 @@ const TopButtonContainer = styled.div`
   z-index: 100;
 `;
 
+const NavPill = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  border: 1.5px solid #E8EAED;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.03);
+  position: absolute;
+  right: -25px;
+  bottom: 64px;
+  z-index: 200;
+`;
+
+const NavButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  cursor: ${(p) => (p.disabled ? "default" : "pointer")};
+  filter: ${(p) => (p.disabled ? "saturate(0)" : "none")};
+  opacity: ${(p) => (p.disabled ? 0.35 : 1)};
+  pointer-events: ${(p) => (p.disabled ? "none" : "auto")};
+  transition: background 0.15s ease, filter 0.2s ease, opacity 0.2s ease;
+  &:hover { background: ${(p) => (p.disabled ? "transparent" : "#F3F4F6")}; }
+`;
+
 const SaveButton = styled.button`
   padding: 8px 12px;
   background-color: #4299e1;
@@ -114,6 +146,7 @@ function Chatbot() {
   const nodes = useSelector((state) => state.node.nodes);
   const nodeColors = useSelector((state) => state.node.nodeColors);
   const contextMode = useSelector((state) => state.mode.contextMode);
+  const selectedIndexNodeId = useSelector((state) => state.node.selectedIndexNodeId);
 
   const currentNodeId = activeNodeIds[activeNodeIds.length - 1] || "root";
 
@@ -241,7 +274,15 @@ function Chatbot() {
     setTopicMarkers(markers);
   };
 
-  const handleMarkerClick = (messageIndex) => {
+  const handleMarkerClick = (nodeId, messageIndex) => {
+    const queue = [nodeId];
+    while (queue.length) {
+      const id = queue.shift();
+      const n = nodes[id];
+      if (!n) continue;
+      dispatch(toggleActiveNode(id));
+      (n.children || []).forEach((c) => queue.push(c));
+    }
     scrollToMessage(messageIndex);
   };
 
@@ -291,6 +332,12 @@ function Chatbot() {
       return;
     }
     if (contextMode) return;
+    if (selectedIndexNodeId) {
+      setGraphNodeSegments([]);
+      setGraphTopicNodeId(null);
+      setAllTopicsHighlighted(false);
+      return;
+    }
     if (activeNodeIds.length === 0) {
       setGraphNodeSegments([]);
       setGraphTopicNodeId(null);
@@ -332,7 +379,7 @@ function Chatbot() {
     while (cur && cur.parent && cur.parent !== "root") cur = nodes[cur.parent];
     setGraphNodeColor((cur?.id && nodeColors[cur.id]) || "#A5A7AA");
     setGraphTopicNodeId(cur?.id || null);
-  }, [activeNodeIds, nodes, messages, contextMode]);
+  }, [activeNodeIds, nodes, messages, contextMode, selectedIndexNodeId]);
 
   useEffect(() => {
     const prevDialogs = prevActiveDialogNumbersRef.current;
@@ -605,12 +652,6 @@ function Chatbot() {
           <div ref={messagesEndRef} />
         </MessagesContainer>
 
-        <TopButton
-          activeDialogNumbers={activeDialogNumbers}
-          currentScrolledDialog={currentScrolledDialog}
-          onMove={moveToMessage}
-        />
-
         <TopButtonContainer>
           <ExportButton onClick={handleExportSnapshot}>Export</ExportButton>
           <ImportButton onClick={handleLoadFromServer}>Import</ImportButton>
@@ -623,6 +664,21 @@ function Chatbot() {
           />
         </TopButtonContainer>
 
+        {(() => {
+          const sorted = [...activeDialogNumbers].sort((a, b) => a - b);
+          const currentIndex = sorted.indexOf(currentScrolledDialog);
+          const inactive = sorted.length === 0;
+          return (
+            <NavPill>
+              <NavButton onClick={() => moveToMessage(-1)} disabled={inactive || currentIndex <= 0}>
+                <span className="material-symbols-outlined md-black-font md-18" style={{ userSelect: "none" }}>keyboard_arrow_up</span>
+              </NavButton>
+              <NavButton onClick={() => moveToMessage(1)} disabled={inactive || currentIndex >= sorted.length - 1}>
+                <span className="material-symbols-outlined md-black-font md-18" style={{ userSelect: "none" }}>keyboard_arrow_down</span>
+              </NavButton>
+            </NavPill>
+          );
+        })()}
         <ChatInput
           input={input}
           isLoading={isLoading}

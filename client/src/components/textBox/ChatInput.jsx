@@ -19,7 +19,7 @@ const InputContainer = styled.div`
   box-shadow: 0px 8px 24px rgba(149, 157, 165, 0.2);
   gap: 10px;
   margin-left: -20px;
-  margin-bottom: 10px;
+  margin-bottom: -6px;
 `;
 
 const TextArea = styled.textarea`
