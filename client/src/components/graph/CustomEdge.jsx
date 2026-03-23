@@ -75,6 +75,7 @@ const CustomEdge = ({
               left: `${customLabelX}px`,
               top: `${customLabelY}px`,
               opacity: edgeStyle.opacity,
+              zIndex: 9999,
             }}
           >
             {label}

@@ -545,6 +545,17 @@ function Graph() {
       });
     });
 
+    // 활성 노드 각각에서 루트까지의 경로 간선 ID를 수집
+    const pathEdgeIds = new Set();
+    activeNodeIds.forEach((nid) => {
+      let current = nid;
+      while (nodeMap[current]?.parent && nodeMap[nodeMap[current].parent]) {
+        const parentId = nodeMap[current].parent;
+        pathEdgeIds.add(`${parentId}-${current}`);
+        current = parentId;
+      }
+    });
+
     const grayEdges = [];
     const coloredEdges = [];
 
@@ -555,9 +566,12 @@ function Graph() {
       const parentIsActive = activeNodeIds.includes(node.parent);
       const rootId = nodeRootMap[node.id];
       const isHighlighted = highlightedRootIds.size === 0 || highlightedRootIds.has(rootId);
-      const edgeColor = isHighlighted ? (rootColorMap[rootId] || "#333") : "#BEBEBE";
+      const isActiveEdge = isHighlighted && highlightedRootIds.size > 0;
+      const edgeId = `${node.parent}-${node.id}`;
+      const isPathEdge = pathEdgeIds.has(edgeId);
+      const edgeColor = isPathEdge ? (rootColorMap[rootId] || "#333") : "#BEBEBE";
       const edgeOpacity = contextMode && !(isActive || parentIsActive) ? 0.2 : 1;
-      const strokeWidth = 2;
+      const strokeWidth = isPathEdge ? 4 : 2;
 
       const edge = {
         id: `${node.parent}-${node.id}`,
@@ -566,6 +580,7 @@ function Graph() {
         label: node.relation || "관련",
         type: "custom",
         animated: false,
+        zIndex: isPathEdge ? 10 : 0,
         style: {
           strokeWidth,
           stroke: edgeColor,
@@ -577,7 +592,7 @@ function Graph() {
         markerEnd: { type: "arrowclosed", color: edgeColor },
       };
 
-      if (isHighlighted && selectedIndexNodeId) {
+      if (isActiveEdge) {
         coloredEdges.push(edge);
       } else {
         grayEdges.push(edge);
