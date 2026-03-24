@@ -42,6 +42,7 @@ const triggerKeywordLabeling = (dispatch, nodeId, nodes) => {
 
 // 🟢 API 요청을 처리하는 함수
 export const sendMessageToApi = (input, previousMessages, opts = {}) => async (dispatch, getState) => {
+  const files = opts.files || [];
   try {
     const contextNodeIds = getState().node.contextNodeIds;
     const contextDialogNumbers = getState().node.contextDialogNumbers;
@@ -80,6 +81,7 @@ export const sendMessageToApi = (input, previousMessages, opts = {}) => async (d
       const response = await axios.post("http://localhost:8080/api/chat", {
         message: input,
         history: filteredMessages,
+        files: files.map((f) => ({ name: f.name, type: f.type, data: f.data })),
       });
       const chatData = response.data;
       gptResponse = chatData?.message;

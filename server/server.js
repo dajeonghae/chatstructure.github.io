@@ -94,15 +94,14 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const OpenAI = require('openai');
-const fs = require('fs');     
+const fs = require('fs');
 const cors = require('cors');
 const { encoding_for_model } = require("@dqbd/tiktoken");
 const enc = encoding_for_model("gpt-3.5-turbo");
-
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ limit: "10mb", extended: true }));
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ limit: "100mb", extended: true }));
 const FIXED_SNAPSHOT_PATH = path.join(__dirname, "chatgraph.json");
 
 // 정적 파일 (옵션)
@@ -153,7 +152,8 @@ const countTokens = (messages) => {
   let tokens = 0;
   for (const message of messages) {
     tokens += 4;
-    tokens += enc.encode(message.content || "").length;
+    const content = typeof message.content === 'string' ? message.content : "";
+    tokens += enc.encode(content || "").length;
     if (message.name) tokens -= 1;
   }
   tokens += 2;
@@ -165,6 +165,91 @@ let summaryText = ""; // 누적 요약 저장
 app.post('/api/chat', async (req, res) => {
     const userPrompt = req.body.message;
     const previousMessages = req.body.history || [];
+    const files = req.body.files || [];
+
+    const imageFiles = files.filter(f => f.type && f.type.startsWith('image/'));
+    const pdfFiles   = files.filter(f => f.type === 'application/pdf');
+
+    // ===== PDF 있을 때: Responses API (PDF 네이티브 지원, 이미지 혼합 가능) =====
+    if (pdfFiles.length > 0) {
+        const userContentItems = [{ type: "input_text", text: userPrompt || "" }];
+
+        for (const file of imageFiles) {
+            console.log(`🖼️ 이미지 첨부 (Responses): ${file.name}`);
+            userContentItems.push({
+                type: "input_image",
+                image_url: `data:${file.type};base64,${file.data}`,
+                detail: "auto"
+            });
+        }
+        for (const file of pdfFiles) {
+            console.log(`📄 PDF 첨부: ${file.name}`);
+            userContentItems.push({
+                type: "input_file",
+                filename: file.name,
+                file_data: `data:application/pdf;base64,${file.data}`
+            });
+        }
+
+        const historyInput = previousMessages.map(msg => ({
+            role: msg.role,
+            content: msg.content || ''
+        }));
+
+        try {
+            const response = await retryRequest(() =>
+                openai.responses.create({
+                    model: "gpt-4o",
+                    input: [
+                        { role: "system", content: "사용자의 질문에 대한 답변을 해줘" },
+                        ...historyInput,
+                        { role: "user", content: userContentItems }
+                    ],
+                    max_output_tokens: RESERVED_FOR_RESPONSE,
+                })
+            );
+            const gptResponse = extractAssistantText(response);
+            console.log("📌 GPT 응답 (Responses API):", gptResponse?.slice(0, 80));
+            return res.json({ message: gptResponse });
+        } catch (error) {
+            console.error("❌ Responses API 오류:", error);
+            return res.status(500).send("Internal Server Error");
+        }
+    }
+
+    // ===== 이미지만 있을 때: Chat Completions (vision, image_url) =====
+    if (imageFiles.length > 0) {
+        const userContent = [
+            { type: "text", text: userPrompt || "" },
+            ...imageFiles.map(f => ({
+                type: "image_url",
+                image_url: { url: `data:${f.type};base64,${f.data}`, detail: "auto" }
+            }))
+        ];
+        imageFiles.forEach(f => console.log(`🖼️ 이미지 첨부 (Chat Completions): ${f.name}`));
+
+        try {
+            const response = await retryRequest(() =>
+                openai.chat.completions.create({
+                    model: "gpt-4.1",
+                    messages: [
+                        { role: "system", content: "사용자의 질문에 대한 답변을 해줘" },
+                        ...previousMessages,
+                        { role: "user", content: userContent }
+                    ],
+                    max_tokens: RESERVED_FOR_RESPONSE,
+                })
+            );
+            const gptResponse = response.choices[0].message.content;
+            console.log("📌 GPT 응답 (이미지 vision):", gptResponse?.slice(0, 80));
+            return res.json({ message: gptResponse });
+        } catch (error) {
+            console.error("❌ Chat Completions (vision) 오류:", error);
+            return res.status(500).send("Internal Server Error");
+        }
+    }
+
+    // ===== 파일 없을 때: 기존 Chat Completions 로직 =====
 
     // --- 🚑 시나리오 2: 새 메시지가 너무 긴 경우 ---
     const userPromptTokens = countTokens([{ role: "user", content: userPrompt }]);
@@ -186,7 +271,7 @@ app.post('/api/chat', async (req, res) => {
 
     if (totalTokens > MAX_CONTEXT_TOKENS) {
         console.log("⚠️ 토큰 초과 감지, 과거 대화 요약을 시작합니다...");
-        
+
         let keptMessages = [...previousMessages];
         let removedMessages = [];
 
@@ -201,21 +286,20 @@ app.post('/api/chat', async (req, res) => {
         ) {
             removedMessages.unshift(keptMessages.shift());
         }
-        
+
         if (removedMessages.length > 0) {
             let toSummarize = [
                 ...(summaryText ? [{ role: "assistant", content: `기존 요약: ${summaryText}` }] : []),
                 ...removedMessages,
             ];
 
-        const SUMMARY_MODEL_MAX_TOKENS = 16000; // gpt-3.5-turbo의 한계는 16385, 안전하게 16k로 설정
+        const SUMMARY_MODEL_MAX_TOKENS = 16000;
         let summaryTokens = countTokens(toSummarize);
 
         if (summaryTokens > SUMMARY_MODEL_MAX_TOKENS) {
             console.log(`⚠️ 요약할 내용(${summaryTokens})조차 너무 깁니다. 최신 내용만 남기고 잘라냅니다.`);
             let truncatedToSummarize = [];
             let currentSummaryTokens = 0;
-            // 최신 메시지부터 거꾸로 담아서 한도에 맞춤
             for (let i = toSummarize.length - 1; i >= 0; i--) {
                 const message = toSummarize[i];
                 const messageTokens = countTokens([message]);
@@ -227,14 +311,13 @@ app.post('/api/chat', async (req, res) => {
                 }
             }
             toSummarize = truncatedToSummarize;
-            // 기존 요약은 새 요약과 관련성이 떨어질 수 있으므로 초기화
-            summaryText = ""; 
+            summaryText = "";
         }
 
             try {
                 const summaryResponse = await retryRequest(() =>
                     openai.chat.completions.create({
-                        model: "gpt-3.5-turbo", // 🚀 요약 모델 속도 개선
+                        model: "gpt-3.5-turbo",
                         messages: [
                             { role: "system", content: "다음 대화 내용을 이전 요약과 함께, 대화의 핵심 맥락이 유지되도록 간결하고 명확하게 요약해줘." },
                             ...toSummarize,
@@ -264,7 +347,7 @@ app.post('/api/chat', async (req, res) => {
     try {
         const response = await retryRequest(() =>
             openai.chat.completions.create({
-                model: "gpt-4o",
+                model: "gpt-4.1",
                 messages: finalMessages,
                 max_tokens: RESERVED_FOR_RESPONSE,
             })

@@ -105,6 +105,7 @@ const DialogPair = ({ userMsg, aiMsg, userRef, aiRef }) => {
                             isUser={true}
                             nodeId={actualNodeId}
                             number={userMsg.number}
+                            attachments={userMsg.attachments}
                         />
                     </div>
                 )}

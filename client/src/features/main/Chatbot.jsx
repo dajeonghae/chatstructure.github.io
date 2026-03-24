@@ -126,6 +126,7 @@ function Chatbot({ showIndex = true }) {
     catch { return []; }
   });
   const [input, setInput] = useState("");
+  const [attachedFiles, setAttachedFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [scrollPercent, setScrollPercent] = useState(100);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -412,7 +413,18 @@ function Chatbot({ showIndex = true }) {
   }, [activeDialogNumbers, currentScrolledDialog, dispatch]);
 
   useEffect(() => {
-    localStorage.setItem('experiment_messages_main', JSON.stringify(messages));
+    // PDF preview(base64)는 용량이 크므로 localStorage 저장 시 제외
+    const messagesForStorage = messages.map((m) => ({
+      ...m,
+      attachments: m.attachments?.map((a) =>
+        a.type === "pdf" ? { type: a.type, name: a.name } : a
+      ),
+    }));
+    try {
+      localStorage.setItem('experiment_messages_main', JSON.stringify(messagesForStorage));
+    } catch (e) {
+      console.warn("localStorage 저장 실패 (용량 초과 가능):", e);
+    }
     scrollToBottom();
     setTimeout(() => {
       calculateTopicMarkers();
@@ -473,14 +485,44 @@ function Chatbot({ showIndex = true }) {
     }
   };
 
+  const handleAttachFiles = async (newFiles) => {
+    const processed = await Promise.all(
+      newFiles.map(
+        (file) =>
+          new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const dataUrl = reader.result;
+              const base64 = dataUrl.split(",")[1];
+              resolve({ name: file.name, type: file.type, data: base64, preview: dataUrl });
+            };
+            reader.readAsDataURL(file);
+          })
+      )
+    );
+    setAttachedFiles((prev) => [...prev, ...processed]);
+  };
+
+  const handleRemoveFile = (index) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleSend = async () => {
-    if (input.trim() === "" || isLoading) return;
+    if (input.trim() === "" && attachedFiles.length === 0) return;
+    if (isLoading) return;
 
     setIsLoading(true);
+
+    const attachments = attachedFiles.map((f) => ({
+      type: f.type.startsWith("image/") ? "image" : "pdf",
+      name: f.name,
+      preview: f.preview,
+    }));
 
     const userMessage = {
       role: "user",
       content: input,
+      attachments: attachments.length > 0 ? attachments : undefined,
       nodeId: currentNodeId,
       number: messages.length + 1,
     };
@@ -488,7 +530,9 @@ function Chatbot({ showIndex = true }) {
     let updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
 
+    const filesToSend = [...attachedFiles];
     setInput("");
+    setAttachedFiles([]);
     setIsExpanded(false);
 
     if (textareaRef.current) {
@@ -496,7 +540,7 @@ function Chatbot({ showIndex = true }) {
     }
 
     try {
-      const gptMessageContent = await dispatch(sendMessageToApi(input, updatedMessages));
+      const gptMessageContent = await dispatch(sendMessageToApi(input, updatedMessages, { files: filesToSend }));
       const gptMessage = {
         role: "assistant",
         content: gptMessageContent,
@@ -684,6 +728,9 @@ function Chatbot({ showIndex = true }) {
           onChange={handleInput}
           onKeyDown={handleKeyDown}
           onSend={handleSend}
+          attachedFiles={attachedFiles}
+          onAttachFiles={handleAttachFiles}
+          onRemoveFile={handleRemoveFile}
         />
       </ChatContainer>
 
