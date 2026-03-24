@@ -12,6 +12,8 @@ const loadNodeState = () => {
         ...parsed,
         activeNodeIds: [],
         activeDialogNumbers: [],
+        contextNodeIds: [],
+        contextDialogNumbers: [],
         currentScrolledDialog: null,
         selectedIndexNodeId: null,
         selectedGraphNodeId: null,

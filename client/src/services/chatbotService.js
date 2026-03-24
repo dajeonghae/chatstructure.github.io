@@ -43,24 +43,24 @@ const triggerKeywordLabeling = (dispatch, nodeId, nodes) => {
 // 🟢 API 요청을 처리하는 함수
 export const sendMessageToApi = (input, previousMessages, opts = {}) => async (dispatch, getState) => {
   try {
-    const contextMode = getState().mode.contextMode;
-    const activeDialogNumbers = getState().node.activeDialogNumbers;
+    const contextNodeIds = getState().node.contextNodeIds;
+    const contextDialogNumbers = getState().node.contextDialogNumbers;
     const allNodes = getState().node.nodes;
-    const activeNodeIds = getState().node.activeNodeIds;
+    const hasContextSelection = contextNodeIds.length > 0;
 
-    // 🔥 Context Mode 활성화 시 활성 대화만 필터링
+    // 🔥 Context 노드가 선택된 경우 해당 대화만 필터링
     let filteredMessages = previousMessages;
-    if (contextMode) {
-      filteredMessages = previousMessages.filter((msg, index) => activeDialogNumbers.includes(index + 1));
-      console.log("🔥 Context Mode 활성화 - 활성 대화 필터링:", filteredMessages);
+    if (hasContextSelection) {
+      filteredMessages = previousMessages.filter((msg, index) => contextDialogNumbers.includes(index + 1));
+      console.log("🔥 Context 선택 - 활성 대화 필터링:", filteredMessages);
     }
 
-    // 🔥 Context Mode 활성화 시 활성 노드만 필터링
-    const filteredNodes = contextMode
-      ? Object.fromEntries(Object.entries(allNodes).filter(([id]) => activeNodeIds.includes(id)))
+    // 🔥 Context 노드가 선택된 경우 해당 노드만 필터링
+    const filteredNodes = hasContextSelection
+      ? Object.fromEntries(Object.entries(allNodes).filter(([id]) => contextNodeIds.includes(id)))
       : allNodes;
 
-    console.log("🔥 Context Mode 활성화 - 활성 노드 필터링:", filteredNodes);
+    console.log("🔥 Context 선택 - 활성 노드 필터링:", filteredNodes);
 
     // [+] A. 파이프라인 완전 우회 (스냅샷/리플레이 고정 재현용)
     if (opts.skipPipeline) { // [+]
@@ -108,7 +108,6 @@ export const sendMessageToApi = (input, previousMessages, opts = {}) => async (d
         keyword: filteredNodes[attachNodeId].keyword,
         userMessage: input,
         gptMessage: gptResponse,
-        contextMode
       }));
       if (updatedNode) {
         dispatch(applyEmbeddingUpdate({
@@ -142,7 +141,6 @@ export const sendMessageToApi = (input, previousMessages, opts = {}) => async (d
         keyword,
         userMessage: input,
         gptMessage: gptResponse,
-        contextMode,
       }));
 
       triggerKeywordLabeling(dispatch, existingNodeId, getState().node.nodes);
@@ -170,10 +168,9 @@ export const sendMessageToApi = (input, previousMessages, opts = {}) => async (d
       keyword,
       userMessage: input,
       gptMessage: gptResponse,
-      contextMode,
       centroid: embedding,
       count: 1,
-      simStats: { n: 0, mean: 0, m2: 0, std: 0 }
+      simStats: { n: 0, mean: 0, m2: 0, std: 0 },
     }));
 
     if (parent && updatedNodes[parent]) {

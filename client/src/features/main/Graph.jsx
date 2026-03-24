@@ -7,8 +7,6 @@ import ContextButton from "../../components/button/ContextButton";
 import VisButton from "../../components/button/VisButton";
 import CustomEdge from "../../components/graph/CustomEdge";
 import CustomTooltipNode from "../../components/tooltip-node/TooltipNode";
-import ToggleButton from "../../components/button/ToggleButton";
-import { toggleContextMode } from "../../redux/slices/modeSlice";
 import { setNodeColors } from "../../redux/slices/nodeSlice";
 
 
@@ -90,13 +88,6 @@ const PanelTitle = styled.div`
   font-weight: 700;
   margin-bottom: 12px;
   color: #575A5E;
-`;
-
-const ToggleContainer = styled.div`
-  position: absolute;
-  top: 70px;
-  left: 20px;
-  z-index: 10;
 `;
 
 const VisContainer = styled.div`
@@ -222,9 +213,10 @@ function Graph() {
 
   const activeNodeIds = useSelector((state) => state.node.activeNodeIds);
   const nodesData = useSelector((state) => state.node.nodes) || {};
-  const contextMode = useSelector((state) => state.mode.contextMode);
+  const contextNodeIds = useSelector((state) => state.node.contextNodeIds) || [];
   const nodeColors = useSelector((state) => state.node.nodeColors) || {};
   const selectedIndexNodeId = useSelector((state) => state.node.selectedIndexNodeId);
+  const hasAnyContext = contextNodeIds.length > 0;
 
   const [helpersHeight, setHelpersHeight] = useState(0);
   const helpersInnerRef = useRef(null);
@@ -251,11 +243,9 @@ function Graph() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isDraggable, setIsDraggable] = useState(false);
 
-  const handleToggle = () => dispatch(toggleContextMode());
-
   const keywordChips = useMemo(() => {
     const seen = new Map();
-    activeNodeIds.forEach((nid) => {
+    contextNodeIds.forEach((nid) => {
       const node = nodesData[nid];
       if (!node) return;
 
@@ -273,7 +263,7 @@ function Graph() {
       });
     });
     return Array.from(seen.values());
-  }, [activeNodeIds, nodesData, nodeColors]);
+  }, [contextNodeIds, nodesData, nodeColors]);
 
   useEffect(() => {
     const nodeMap = { ...nodesData };
@@ -440,13 +430,11 @@ function Graph() {
 
     // 배경 rect: 활성 노드를 column(같은 x)별로 묶고, 사이에 비활성 노드 없는 것만 합침
     const highlightSet = new Set();
-    if (!contextMode) {
-      activeNodeIds.forEach((id) => { if (positionedMap[id]) highlightSet.add(id); });
-      if (selectedIndexNodeId) {
-        Object.keys(nodeRootMap).forEach((id) => {
-          if (nodeRootMap[id] === selectedIndexNodeId && positionedMap[id]) highlightSet.add(id);
-        });
-      }
+    activeNodeIds.forEach((id) => { if (positionedMap[id]) highlightSet.add(id); });
+    if (selectedIndexNodeId) {
+      Object.keys(nodeRootMap).forEach((id) => {
+        if (nodeRootMap[id] === selectedIndexNodeId && positionedMap[id]) highlightSet.add(id);
+      });
     }
     const highlightedRootIds = new Set([...highlightSet].map((id) => nodeRootMap[id]).filter(Boolean));
 
@@ -563,14 +551,13 @@ function Graph() {
       if (!node?.parent || !nodeMap[node.parent]) return;
 
       const isActive = activeNodeIds.includes(node.id);
-      const parentIsActive = activeNodeIds.includes(node.parent);
       const rootId = nodeRootMap[node.id];
       const isHighlighted = highlightedRootIds.size === 0 || highlightedRootIds.has(rootId);
       const isActiveEdge = isHighlighted && highlightedRootIds.size > 0;
       const edgeId = `${node.parent}-${node.id}`;
       const isPathEdge = pathEdgeIds.has(edgeId);
       const edgeColor = (isPathEdge || activeNodeIds.length === 0) ? (rootColorMap[rootId] || "#333") : "#BEBEBE";
-      const edgeOpacity = contextMode && !(isActive || parentIsActive) ? 0.2 : 1;
+      const edgeOpacity = 1;
       const strokeWidth = isPathEdge ? 4 : 2;
 
       const edge = {
@@ -587,7 +574,7 @@ function Graph() {
           opacity: edgeOpacity,
           transition: "none",
         },
-        data: { sourceId: node.parent, targetId: node.id, isActive, contextMode, activeNodeIds },
+        data: { sourceId: node.parent, targetId: node.id, isActive, contextNodeIds, activeNodeIds },
         labelStyle: { fontWeight: 600, fontSize: 14, opacity: edgeOpacity },
         markerEnd: { type: "arrowclosed", color: edgeColor },
       };
@@ -605,20 +592,20 @@ function Graph() {
     setNodes(updatedNodes);
     setEdges(updatedEdges);
     dispatch(setNodeColors(rootColorMap));
-  }, [nodesData, activeNodeIds, contextMode, selectedIndexNodeId, dispatch]);
+  }, [nodesData, activeNodeIds, contextNodeIds, selectedIndexNodeId, dispatch]);
 
   useEffect(() => {
     const measure = () => {
       const el = helpersInnerRef.current;
-      setHelpersHeight(contextMode && el ? el.getBoundingClientRect().height : 0);
+      setHelpersHeight(hasAnyContext && el ? el.getBoundingClientRect().height : 0);
     };
     requestAnimationFrame(measure);
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [contextMode, activeNodeIds.length, tokenUsed, tokenLimit]);
+  }, [hasAnyContext, activeNodeIds.length, tokenUsed, tokenLimit]);
 
   useEffect(() => {
-    if (!contextMode || !activeNodeIds?.length) {
+    if (!hasAnyContext || !contextNodeIds?.length) {
       setTokenUsed(0);
       return;
     }
@@ -626,7 +613,7 @@ function Graph() {
     let sum = 0;
     const seen = new Set();
 
-    activeNodeIds.forEach((nid) => {
+    contextNodeIds.forEach((nid) => {
       const node = nodesData[nid];
       if (!node?.dialog) return;
 
@@ -641,14 +628,11 @@ function Graph() {
     });
 
     setTokenUsed(sum);
-  }, [contextMode, activeNodeIds, nodesData]);
+  }, [hasAnyContext, contextNodeIds, nodesData]);
 
   return (
     <Page>
       <GraphPanel ref={containerRef}>
-        <ToggleContainer>
-          <ToggleButton active={contextMode} onToggle={handleToggle} />
-        </ToggleContainer>
         {/* <VisContainer>
           <VisButton />
         </VisContainer> */}
@@ -670,7 +654,7 @@ function Graph() {
         </ReactFlow>
       </GraphPanel>
 
-      <SlideSection $h={helpersHeight} $open={contextMode}>
+      <SlideSection $h={helpersHeight} $open={hasAnyContext}>
         <div ref={helpersInnerRef}>
           <HelperContainer>
             <TokenPanel>

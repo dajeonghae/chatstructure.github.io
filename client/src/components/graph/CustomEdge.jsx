@@ -29,13 +29,7 @@ const CustomEdge = ({
   style = {},
   label,
   markerEnd,
-  data,
 }) => {
-  const contextMode = data?.contextMode || false;
-  const sourceId = data?.sourceId;
-  const targetId = data?.targetId;
-  const activeNodeIds = data?.activeNodeIds || [];
-  const isTrulyActive = activeNodeIds.includes(sourceId) && activeNodeIds.includes(targetId);
 
   // 기본 path 계산
   const [edgePath] = getSmoothStepPath({
@@ -61,8 +55,7 @@ const CustomEdge = ({
 
   const edgeStyle = {
     ...style,
-    opacity: contextMode ? (isTrulyActive ? 1 : 0.2) : 1,
-    transition: "stroke 1.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 1.4s cubic-bezier(0.4, 0, 0.2, 1)",
+    transition: "stroke 1.4s cubic-bezier(0.4, 0, 0.2, 1)",
   };
 
   return (
@@ -74,7 +67,6 @@ const CustomEdge = ({
             style={{
               left: `${customLabelX}px`,
               top: `${customLabelY}px`,
-              opacity: edgeStyle.opacity,
               zIndex: 9999,
             }}
           >

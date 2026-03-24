@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import styled from "styled-components";
 import { useDispatch, useSelector } from "react-redux";
 import { sendMessageToApi } from "../../services/chatbotService.js";
-import { setCurrentScrolledDialog, clearActiveSelections, toggleActiveNode } from "../../redux/slices/nodeSlice.js";
+import { setCurrentScrolledDialog, toggleActiveNode } from "../../redux/slices/nodeSlice.js";
 import { parseConversationHistory } from "../../utils/parseConversationHistory.js";
 import {
   buildFullSnapshot,
@@ -150,7 +150,6 @@ function Chatbot({ showIndex = true }) {
   const activeNodeIds = useSelector((state) => state.node.activeNodeIds);
   const nodes = useSelector((state) => state.node.nodes);
   const nodeColors = useSelector((state) => state.node.nodeColors);
-  const contextMode = useSelector((state) => state.mode.contextMode);
   const selectedIndexNodeId = useSelector((state) => state.node.selectedIndexNodeId);
 
   const currentNodeId = activeNodeIds[activeNodeIds.length - 1] || "root";
@@ -333,28 +332,8 @@ function Chatbot({ showIndex = true }) {
       .filter(Boolean);
   };
 
-  // contextMode OFF 시 활성화된 선택 초기화
-  const prevContextModeRef = useRef(false);
-  const justClearedRef = useRef(false);
-  useEffect(() => {
-    if (prevContextModeRef.current && !contextMode) {
-      justClearedRef.current = true;
-      setGraphNodeSegments([]);
-      setGraphTopicNodeId(null);
-      setAllTopicsHighlighted(false);
-      dispatch(clearActiveSelections());
-    }
-    prevContextModeRef.current = contextMode;
-  }, [contextMode, dispatch]);
-
   // 활성화된 노드 → ChatIndex highlight + 스크롤 (모든 모드 통합)
   useEffect(() => {
-    // contextMode 해제 직후엔 stale activeNodeIds로 재계산하지 않음
-    if (justClearedRef.current) {
-      justClearedRef.current = false;
-      return;
-    }
-    if (contextMode) return;
     if (selectedIndexNodeId) {
       setGraphNodeSegments([]);
       setGraphTopicNodeId(null);
@@ -402,7 +381,7 @@ function Chatbot({ showIndex = true }) {
     while (cur && cur.parent && cur.parent !== "root") cur = nodes[cur.parent];
     setGraphNodeColor((cur?.id && nodeColors[cur.id]) || "#A5A7AA");
     setGraphTopicNodeId(cur?.id || null);
-  }, [activeNodeIds, nodes, messages, contextMode, selectedIndexNodeId]);
+  }, [activeNodeIds, nodes, messages, selectedIndexNodeId]);
 
   useEffect(() => {
     const prevDialogs = prevActiveDialogNumbersRef.current;
@@ -415,17 +394,10 @@ function Chatbot({ showIndex = true }) {
     const newlyRemoved = prevSorted.filter((num) => !currSorted.includes(num));
 
     if (newlyAdded.length > 0 && currSorted.length > 0) {
-      if (contextMode) {
-        // 새 메시지 추가(context mode) → 최신 대화로 스크롤
-        const latest = currSorted[currSorted.length - 1];
-        dispatch(setCurrentScrolledDialog(latest));
-        setTimeout(() => scrollToMessage(latest - 1), 0);
-      } else {
-        // 인덱스/노드 등으로 history 활성화 → 가장 이른 대화로 스크롤
-        const earliest = currSorted[0];
-        dispatch(setCurrentScrolledDialog(earliest));
-        setTimeout(() => scrollToMessage(earliest - 1), 0);
-      }
+      // 가장 이른 대화로 스크롤
+      const earliest = currSorted[0];
+      dispatch(setCurrentScrolledDialog(earliest));
+      setTimeout(() => scrollToMessage(earliest - 1), 0);
     } else if (newlyRemoved.length > 0 && currSorted.length > 0) {
       const closest = currSorted.reduce((prev, curr) => {
         return Math.abs(curr - currentScrolledDialog) < Math.abs(prev - currentScrolledDialog)
@@ -437,7 +409,7 @@ function Chatbot({ showIndex = true }) {
     }
 
     prevActiveDialogNumbersRef.current = currDialogs;
-  }, [activeDialogNumbers, currentScrolledDialog, dispatch, contextMode]);
+  }, [activeDialogNumbers, currentScrolledDialog, dispatch]);
 
   useEffect(() => {
     localStorage.setItem('experiment_messages_main', JSON.stringify(messages));

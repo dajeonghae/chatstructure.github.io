@@ -1,9 +1,10 @@
-import { memo } from "react";
+import { memo, useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Handle, Position } from "reactflow";
 import styled from "styled-components";
 import { useDispatch, useSelector } from "react-redux";
 import { setHoveredNodes, clearHoveredNodes } from "../../redux/slices/modeSlice";
-import { toggleActiveNode, setSelectedIndexNode } from "../../redux/slices/nodeSlice";
+import { toggleActiveNode, toggleContextNode, setSelectedIndexNode } from "../../redux/slices/nodeSlice";
 import { COLORS } from "../../styles/colors";
 import { trackNodeInteraction } from "../../services/trackingService";
 
@@ -16,27 +17,24 @@ const NodeContent = styled.div`
   padding: 10px 20px;
   border-radius: 20px;
   background: ${(props) =>
-    props.isActive && props.isContextMode
+    props.isContextActive
       ? "#606368"
       : props.isHovered
       ? "#A0AEC0"
-      : props.isContextMode
-      ? "rgba(217, 217, 217, 0.4)"
       : "#fff"};
   color: ${(props) =>
-    props.isActive && props.isContextMode
+    props.isContextActive
       ? "white"
       : props.isActive
       ? props.darkerColor || COLORS.dark_grey_font
       : COLORS.dark_grey_font};
   text-align: center;
-  border: 1px solid
-    ${(props) =>
-      props.isActive
-        ? props.borderColor || "#48BB78"
-        : "#d9d9d9"};
+  border: ${(props) =>
+    props.isActive
+      ? `2px solid ${props.borderColor || "#48BB78"}`
+      : "1px solid #d9d9d9"};
   transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.3s;
-  opacity: ${(props) => (props.isContextMode && !props.isActive ? 0.3 : 1)};
+  opacity: 1;
   cursor: pointer;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   font-weight: 600;
@@ -47,17 +45,55 @@ const NodeContent = styled.div`
   }
 `;
 
+const ContextMenu = styled.div`
+  position: fixed;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  padding: 10px 14px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 140px;
+`;
+
+const MenuLabel = styled.div`
+  font-size: 12px;
+  color: #8a8f98;
+  font-weight: 500;
+`;
+
+const MenuButtons = styled.div`
+  display: flex;
+  gap: 6px;
+`;
+
+const MenuBtn = styled.button`
+  flex: 1;
+  padding: 5px 0;
+  border-radius: 6px;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: ${(p) => (p.primary ? "#606368" : "#f1f3f5")};
+  color: ${(p) => (p.primary ? "#fff" : "#575a5e")};
+  &:hover {
+    opacity: 0.85;
+  }
+`;
+
 // 부모 노드를 모두 가져오는 함수
 const getAllParentNodes = (nodeId, nodesData) => {
   let currentNode = nodesData[nodeId];
   const parentNodes = [];
-
   while (currentNode && currentNode.parent && currentNode.parent !== "root") {
     if (!nodesData[currentNode.parent]) break;
     parentNodes.push(currentNode.parent);
     currentNode = nodesData[currentNode.parent];
   }
-
   return parentNodes.reverse();
 };
 
@@ -65,7 +101,6 @@ const getAllParentNodes = (nodeId, nodesData) => {
 const getAllChildNodes = (nodeId, nodesData) => {
   const childNodes = [];
   const queue = [nodeId];
-
   while (queue.length) {
     const currentId = queue.shift();
     const currentNode = nodesData[currentId];
@@ -73,7 +108,6 @@ const getAllChildNodes = (nodeId, nodesData) => {
     childNodes.push(currentId);
     currentNode.children.forEach((childId) => queue.push(childId));
   }
-
   return childNodes;
 };
 
@@ -81,13 +115,30 @@ const TooltipNode = ({ data, id }) => {
   const dispatch = useDispatch();
   const linearMode = useSelector((state) => state.mode.linearMode);
   const treeMode = useSelector((state) => state.mode.treeMode);
-  const contextMode = useSelector((state) => state.mode.contextMode);
   const hoveredNodeIds = useSelector((state) => state.mode.hoveredNodeIds);
   const activeNodeIds = useSelector((state) => state.node.activeNodeIds);
+  const contextNodeIds = useSelector((state) => state.node.contextNodeIds) || [];
   const nodesData = useSelector((state) => state.node.nodes);
 
   const isHovered = hoveredNodeIds.includes(id);
   const isActive = activeNodeIds.includes(id);
+  const isContextActive = contextNodeIds.includes(id);
+  const hasAnyContext = contextNodeIds.length > 0;
+
+  const [menu, setMenu] = useState(null); // { x, y }
+  const menuRef = useRef(null);
+
+  // 외부 클릭 시 메뉴 닫기
+  useEffect(() => {
+    if (!menu) return;
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menu]);
 
   const handleMouseEnter = () => {
     if (linearMode) {
@@ -104,26 +155,18 @@ const TooltipNode = ({ data, id }) => {
 
   const handleClick = (event) => {
     event.stopPropagation();
+    if (menu) { setMenu(null); return; }
     trackNodeInteraction();
     if ((linearMode || treeMode) && hoveredNodeIds.length > 0) {
-      if (contextMode) {
+      const allAlreadyActive = hoveredNodeIds.every((id) => activeNodeIds.includes(id));
+      if (allAlreadyActive) {
         hoveredNodeIds.forEach((id) => dispatch(toggleActiveNode(id)));
       } else {
-        const allAlreadyActive = hoveredNodeIds.every((id) => activeNodeIds.includes(id));
-        if (allAlreadyActive) {
-          // 같은 선택 다시 클릭 → 해제
-          hoveredNodeIds.forEach((id) => dispatch(toggleActiveNode(id)));
-        } else {
-          // 새 선택 → 기존 전부 해제 후 새로 활성화
-          dispatch(setSelectedIndexNode(null));
-          activeNodeIds.forEach((id) => dispatch(toggleActiveNode(id)));
-          hoveredNodeIds.forEach((id) => dispatch(toggleActiveNode(id)));
-        }
+        dispatch(setSelectedIndexNode(null));
+        activeNodeIds.forEach((id) => dispatch(toggleActiveNode(id)));
+        hoveredNodeIds.forEach((id) => dispatch(toggleActiveNode(id)));
       }
-    } else if (contextMode) {
-      dispatch(toggleActiveNode(id));
     } else {
-      // node 모드: 단일 선택
       dispatch(setSelectedIndexNode(null));
       if (!isActive) {
         activeNodeIds.forEach((activeId) => dispatch(toggleActiveNode(activeId)));
@@ -132,9 +175,20 @@ const TooltipNode = ({ data, id }) => {
     }
   };
 
+  const handleRightClick = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setMenu({ x: event.clientX, y: event.clientY });
+  };
+
+  const handleConfirm = () => {
+    dispatch(toggleContextNode(id));
+    setMenu(null);
+  };
+
   return (
-    <TooltipContainer onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onClick={handleClick}>
-      <NodeContent isHovered={isHovered} isActive={isActive} isContextMode={contextMode} borderColor={data.color} darkerColor={data.darkerColor}>
+    <TooltipContainer onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onClick={handleClick} onContextMenu={handleRightClick}>
+      <NodeContent isHovered={isHovered} isActive={isActive} isContextActive={isContextActive} hasAnyContext={hasAnyContext} borderColor={data.color} darkerColor={data.darkerColor}>
         {data.label}
       </NodeContent>
       <Handle
@@ -147,6 +201,18 @@ const TooltipNode = ({ data, id }) => {
         position={Position.Left}
         style={{ background: data.isIndexHighlighted !== false ? data.color : "#BEBEBE", transition: "background 0.2s ease" }}
       />
+      {menu && createPortal(
+        <ContextMenu ref={menuRef} style={{ left: menu.x, top: menu.y }}>
+          <MenuLabel>{isContextActive ? "컨텍스트에서 제거할까요?" : "컨텍스트에 추가할까요?"}</MenuLabel>
+          <MenuButtons>
+            <MenuBtn primary onClick={handleConfirm}>
+              {isContextActive ? "빼기" : "넣기"}
+            </MenuBtn>
+            <MenuBtn onClick={() => setMenu(null)}>취소</MenuBtn>
+          </MenuButtons>
+        </ContextMenu>,
+        document.body
+      )}
     </TooltipContainer>
   );
 };

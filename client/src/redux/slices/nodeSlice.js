@@ -23,6 +23,8 @@ const defaultInitialState = {
   },
   activeNodeIds: [],
   activeDialogNumbers: [],
+  contextNodeIds: [],
+  contextDialogNumbers: [],
   dialogCount: 1,
   currentScrolledDialog: null,
   selectedIndexNodeId: null,
@@ -142,9 +144,42 @@ const nodeSlice = createSlice({
       });
     },
 
+    toggleContextNode: (state, action) => {
+      const nodeId = action.payload;
+
+      if (state.contextNodeIds.includes(nodeId)) {
+        state.contextNodeIds = state.contextNodeIds.filter(id => id !== nodeId);
+        const dialogNumbers = Object.keys(state.nodes[nodeId].dialog).map(Number);
+        state.contextDialogNumbers = state.contextDialogNumbers.filter(number => {
+          return !dialogNumbers.some(dialogNumber => {
+            const questionNumber = (dialogNumber - 1) * 2 + 1;
+            const answerNumber = (dialogNumber - 1) * 2 + 2;
+            return number === questionNumber || number === answerNumber;
+          });
+        });
+        return;
+      }
+
+      state.contextNodeIds.push(nodeId);
+
+      if (state.nodes[nodeId]) {
+        const dialogNumbers = Object.keys(state.nodes[nodeId].dialog).map(Number);
+        const newDialogs = [];
+        dialogNumbers.forEach((number) => {
+          newDialogs.push((number - 1) * 2 + 1);
+          newDialogs.push((number - 1) * 2 + 2);
+        });
+        const unique = Array.from(new Set([...state.contextDialogNumbers, ...newDialogs]));
+        unique.sort((a, b) => a - b);
+        state.contextDialogNumbers = unique;
+      }
+
+      console.log("🔥 Context 노드 활성화:", JSON.stringify(state.contextNodeIds));
+    },
+
     addOrUpdateNode: (state, action) => {
         const {
-          id, keyword, userMessage, gptMessage, contextMode,
+          id, keyword, userMessage, gptMessage,
           centroid, count, simStats
         } = action.payload;
 
@@ -180,14 +215,6 @@ const nodeSlice = createSlice({
         gptMessage,
       };
 
-      // 🔥 Context Mode가 켜져 있다면 자동으로 활성화 처리
-      if (contextMode) {
-        state.activeNodeIds.push(id);
-        state.activeDialogNumbers.push((dialogNumber - 1) * 2 + 1);  // 질문 번호 추가
-        state.activeDialogNumbers.push((dialogNumber - 1) * 2 + 2);  // 답변 번호 추가
-        console.log("🔥 [Context Mode] 새로 추가된 노드 활성화:", id);
-      }
-      
       // 대화 번호 증가
       state.dialogCount += 1;
 
@@ -238,6 +265,8 @@ const nodeSlice = createSlice({
     clearActiveSelections: (state) => {
       state.activeNodeIds = [];
       state.activeDialogNumbers = [];
+      state.contextNodeIds = [];
+      state.contextDialogNumbers = [];
       state.currentScrolledDialog = null;
       state.selectedIndexNodeId = null;
       state.selectedGraphNodeId = null;
@@ -246,18 +275,20 @@ const nodeSlice = createSlice({
     resetToInitial: () => defaultInitialState,
 
     resetState: (state, action) => {
-      const { nodes, activeNodeIds, activeDialogNumbers, dialogCount, currentScrolledDialog, nodeColors } = action.payload;
+      const { nodes, activeNodeIds, activeDialogNumbers, contextNodeIds, contextDialogNumbers, dialogCount, currentScrolledDialog, nodeColors } = action.payload;
       state.nodes = nodes || state.nodes;
       state.activeNodeIds = activeNodeIds;
       state.activeDialogNumbers = activeDialogNumbers;
+      state.contextNodeIds = contextNodeIds || [];
+      state.contextDialogNumbers = contextDialogNumbers || [];
       state.dialogCount = Number.isInteger(dialogCount) ? dialogCount : 1;
       if (typeof currentScrolledDialog !== "undefined") {
-        state.currentScrolledDialog = currentScrolledDialog; 
+        state.currentScrolledDialog = currentScrolledDialog;
       }
       if (typeof nodeColors !== "undefined") {
-        state.nodeColors = nodeColors; 
+        state.nodeColors = nodeColors;
       }
-    }  
+    }
   },
 
   extraReducers: (builder) => {
@@ -267,5 +298,5 @@ const nodeSlice = createSlice({
   },
 });
 
-export const { toggleActiveDialog, toggleActiveNode, addOrUpdateNode, setParentNode, applyEmbeddingUpdate, setCurrentScrolledDialog, setSelectedIndexNode, setSelectedGraphNode, resetState, resetToInitial, setNodeKeywords, clearActiveSelections } = nodeSlice.actions;
+export const { toggleActiveDialog, toggleActiveNode, toggleContextNode, addOrUpdateNode, setParentNode, applyEmbeddingUpdate, setCurrentScrolledDialog, setSelectedIndexNode, setSelectedGraphNode, resetState, resetToInitial, setNodeKeywords, clearActiveSelections } = nodeSlice.actions;
 export default nodeSlice.reducer;
