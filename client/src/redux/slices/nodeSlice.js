@@ -272,6 +272,47 @@ const nodeSlice = createSlice({
       state.selectedGraphNodeId = null;
     },
 
+    removeLastDialog: (state) => {
+      const lastDialogNumber = state.dialogCount - 1;
+      if (lastDialogNumber < 1) return;
+
+      for (const nodeId of Object.keys(state.nodes)) {
+        if (nodeId === 'root') continue;
+        const node = state.nodes[nodeId];
+        if (node.dialog[lastDialogNumber] !== undefined) {
+          delete node.dialog[lastDialogNumber];
+          state.dialogCount -= 1;
+
+          if (Object.keys(node.dialog).length === 0) {
+            const parentId = node.parent;
+            if (parentId && state.nodes[parentId]) {
+              state.nodes[parentId].children = state.nodes[parentId].children.filter(id => id !== nodeId);
+            }
+            delete state.nodes[nodeId];
+          }
+
+          const q = (lastDialogNumber - 1) * 2 + 1;
+          const a = (lastDialogNumber - 1) * 2 + 2;
+          state.activeDialogNumbers = state.activeDialogNumbers.filter(n => n !== q && n !== a);
+          state.contextDialogNumbers = state.contextDialogNumbers.filter(n => n !== q && n !== a);
+          state.contextNodeIds = state.contextNodeIds.filter(id => state.nodes[id]);
+
+          const newActiveNodeIds = new Set();
+          Object.entries(state.nodes).forEach(([id, n]) => {
+            const dNums = Object.keys(n.dialog).map(Number);
+            const hasActive = dNums.some(dn => {
+              const qn = (dn - 1) * 2 + 1;
+              const an = (dn - 1) * 2 + 2;
+              return state.activeDialogNumbers.includes(qn) || state.activeDialogNumbers.includes(an);
+            });
+            if (hasActive) newActiveNodeIds.add(id);
+          });
+          state.activeNodeIds = [...newActiveNodeIds];
+          break;
+        }
+      }
+    },
+
     resetToInitial: () => defaultInitialState,
 
     resetState: (state, action) => {
@@ -298,5 +339,5 @@ const nodeSlice = createSlice({
   },
 });
 
-export const { toggleActiveDialog, toggleActiveNode, toggleContextNode, addOrUpdateNode, setParentNode, applyEmbeddingUpdate, setCurrentScrolledDialog, setSelectedIndexNode, setSelectedGraphNode, resetState, resetToInitial, setNodeKeywords, clearActiveSelections } = nodeSlice.actions;
+export const { toggleActiveDialog, toggleActiveNode, toggleContextNode, addOrUpdateNode, setParentNode, applyEmbeddingUpdate, setCurrentScrolledDialog, setSelectedIndexNode, setSelectedGraphNode, resetState, resetToInitial, setNodeKeywords, clearActiveSelections, removeLastDialog } = nodeSlice.actions;
 export default nodeSlice.reducer;

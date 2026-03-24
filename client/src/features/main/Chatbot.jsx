@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import styled from "styled-components";
 import { useDispatch, useSelector } from "react-redux";
 import { sendMessageToApi } from "../../services/chatbotService.js";
-import { setCurrentScrolledDialog, toggleActiveNode } from "../../redux/slices/nodeSlice.js";
+import { setCurrentScrolledDialog, toggleActiveNode, resetToInitial, removeLastDialog } from "../../redux/slices/nodeSlice.js";
 import { parseConversationHistory } from "../../utils/parseConversationHistory.js";
 import {
   buildFullSnapshot,
@@ -32,6 +32,35 @@ const mergeSegments = (rawSegments, canMerge) => {
   segments.push(group);
   return segments;
 };
+
+const dotBounce = `
+  @keyframes dotBounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+    40%            { transform: translateY(-6px); opacity: 1; }
+  }
+`;
+
+const TypingBubble = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  margin-left: 28px;
+  margin-bottom: 24px;
+
+  span {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #A0AEC0;
+    animation: dotBounce 1.2s ease-in-out infinite;
+  }
+  span:nth-child(2) { animation-delay: 0.2s; }
+  span:nth-child(3) { animation-delay: 0.4s; }
+
+  ${dotBounce}
+`;
 
 const LayoutWrapper = styled.div`
   display: flex;
@@ -120,7 +149,28 @@ const ImportButton = styled(SaveButton)`
   border: 1px solid #2d3748;
 `;
 
+const AdminDivider = styled.div`
+  width: 100%;
+  height: 1px;
+  background: #E2E8F0;
+  margin: 2px 0;
+`;
+
+const AdminButton = styled.button`
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: ${(p) => p.danger ? "#E53E3E" : "#2D3748"};
+  color: white;
+  opacity: 0.85;
+  &:hover { opacity: 1; }
+`;
+
 function Chatbot({ showIndex = true }) {
+  const isAdmin = localStorage.getItem('experiment_user') === 'admin';
   const [messages, setMessages] = useState(() => {
     try { return JSON.parse(localStorage.getItem('experiment_messages_main')) || []; }
     catch { return []; }
@@ -128,6 +178,7 @@ function Chatbot({ showIndex = true }) {
   const [input, setInput] = useState("");
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isWaiting, setIsWaiting] = useState(false);
   const [scrollPercent, setScrollPercent] = useState(100);
   const [isExpanded, setIsExpanded] = useState(false);
   const [topicMarkers, setTopicMarkers] = useState([]);
@@ -158,8 +209,13 @@ function Chatbot({ showIndex = true }) {
   const handleScroll = (e) => {
     const { scrollTop, scrollHeight } = e.target;
 
-    const percent = (scrollTop / scrollHeight) * 100;
-    setScrollPercent(percent);
+    // 마커 계산과 동일한 기준: topPx / scrollHeight * 100
+    const rawPercent = (scrollTop / Math.max(1, scrollHeight)) * 100;
+    const { min, range } = contentScaleRef.current;
+    const scaled = range > 0
+      ? Math.max(0, Math.min(100, ((rawPercent - min) / range) * 100))
+      : rawPercent;
+    setScrollPercent(scaled);
   };
 
   const scrollToMessage = (index) => {
@@ -539,21 +595,45 @@ function Chatbot({ showIndex = true }) {
       textareaRef.current.style.height = "40px";
     }
 
+    setIsWaiting(true);
     try {
       const gptMessageContent = await dispatch(sendMessageToApi(input, updatedMessages, { files: filesToSend }));
+      setIsWaiting(false);
+
       const gptMessage = {
         role: "assistant",
-        content: gptMessageContent,
+        content: "",
         nodeId: currentNodeId,
         number: updatedMessages.length + 1,
       };
 
       updatedMessages = [...updatedMessages, gptMessage];
       setMessages(updatedMessages);
+
+      // 타이프라이터 효과
+      let i = 0;
+      const CHUNK = 3; // 한 번에 몇 글자씩
+      const DELAY = 16; // ms
+      await new Promise((resolve) => {
+        const timer = setInterval(() => {
+          i = Math.min(i + CHUNK, gptMessageContent.length);
+          setMessages((prev) => {
+            const next = [...prev];
+            next[next.length - 1] = { ...next[next.length - 1], content: gptMessageContent.slice(0, i) };
+            return next;
+          });
+          if (i >= gptMessageContent.length) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, DELAY);
+      });
+
       trackMessage(Math.ceil(userMessage.number / 2), input, gptMessageContent);
     } catch (error) {
       console.error("Error sending message:", error);
     } finally {
+      setIsWaiting(false);
       setIsLoading(false);
     }
   };
@@ -621,6 +701,19 @@ function Chatbot({ showIndex = true }) {
     window.addEventListener("chat:replay", onReplay);
     return () => window.removeEventListener("chat:replay", onReplay);
   }, [dispatch, currentNodeId, messages]);
+
+  const handleClearAll = () => {
+    if (!window.confirm("대화 기록을 전부 삭제할까요?")) return;
+    dispatch(resetToInitial());
+    setMessages([]);
+    localStorage.removeItem('experiment_messages_main');
+  };
+
+  const handleUndoTurn = () => {
+    if (messages.length < 2) return;
+    dispatch(removeLastDialog());
+    setMessages((prev) => prev.slice(0, -2));
+  };
 
   const handleLoadFromServer = async () => {
     try {
@@ -690,12 +783,24 @@ function Chatbot({ showIndex = true }) {
               />
             ));
           })()}
+          {isWaiting && (
+            <TypingBubble>
+              <span /><span /><span />
+            </TypingBubble>
+          )}
           <div ref={messagesEndRef} />
         </MessagesContainer>
 
         <TopButtonContainer>
           <ExportButton onClick={handleExportSnapshot}>Export</ExportButton>
           <ImportButton onClick={handleLoadFromServer}>Import</ImportButton>
+          {isAdmin && (
+            <>
+              <AdminDivider />
+              <AdminButton onClick={handleUndoTurn} disabled={messages.length < 2}>한 턴 되돌리기</AdminButton>
+              <AdminButton danger onClick={handleClearAll}>전체 삭제</AdminButton>
+            </>
+          )}
           <input
             type="file"
             ref={fileInputRef}

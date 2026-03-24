@@ -144,7 +144,7 @@ async function retryRequest(callback, maxRetries = 5) {
 }
 
 const MAX_TOKENS = 15900;
-const RESERVED_FOR_RESPONSE = 1200;
+const RESERVED_FOR_RESPONSE = 4096;
 const MAX_CONTEXT_TOKENS = MAX_TOKENS - RESERVED_FOR_RESPONSE;
 
 const countTokens = (messages) => {
@@ -199,7 +199,7 @@ app.post('/api/chat', async (req, res) => {
         try {
             const response = await retryRequest(() =>
                 openai.responses.create({
-                    model: "gpt-4o",
+                    model: "gpt-5.1",
                     input: [
                         { role: "system", content: "사용자의 질문에 대한 답변을 해줘" },
                         ...historyInput,
@@ -230,17 +230,17 @@ app.post('/api/chat', async (req, res) => {
 
         try {
             const response = await retryRequest(() =>
-                openai.chat.completions.create({
-                    model: "gpt-4.1",
-                    messages: [
+                openai.responses.create({
+                    model: "gpt-5.1",
+                    input: [
                         { role: "system", content: "사용자의 질문에 대한 답변을 해줘" },
-                        ...previousMessages,
+                        ...previousMessages.map(({ role, content }) => ({ role, content })),
                         { role: "user", content: userContent }
                     ],
-                    max_tokens: RESERVED_FOR_RESPONSE,
+                    max_output_tokens: RESERVED_FOR_RESPONSE,
                 })
             );
-            const gptResponse = response.choices[0].message.content;
+            const gptResponse = extractAssistantText(response);
             console.log("📌 GPT 응답 (이미지 vision):", gptResponse?.slice(0, 80));
             return res.json({ message: gptResponse });
         } catch (error) {
@@ -322,7 +322,7 @@ app.post('/api/chat', async (req, res) => {
                             { role: "system", content: "다음 대화 내용을 이전 요약과 함께, 대화의 핵심 맥락이 유지되도록 간결하고 명확하게 요약해줘." },
                             ...toSummarize,
                         ],
-                        max_tokens: 500,
+                        max_completion_tokens: 500,
                     })
                 );
                 summaryText = extractAssistantText(summaryResponse) || summaryText;
@@ -346,13 +346,13 @@ app.post('/api/chat', async (req, res) => {
 
     try {
         const response = await retryRequest(() =>
-            openai.chat.completions.create({
-                model: "gpt-4.1",
-                messages: finalMessages,
-                max_tokens: RESERVED_FOR_RESPONSE,
+            openai.responses.create({
+                model: "gpt-5.1",
+                input: finalMessages.map(({ role, content }) => ({ role, content })),
+                max_output_tokens: RESERVED_FOR_RESPONSE,
             })
         );
-        const gptResponse = response.choices[0].message.content;
+        const gptResponse = extractAssistantText(response);
         res.json({ message: gptResponse });
     } catch (error) {
         console.error("❌ GPT 응답 오류:", error);
@@ -457,9 +457,9 @@ app.post('/api/update-graph', async (req, res) => {
   );
 
   try {
-    const response = await retryRequest(() => openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
+    const response = await retryRequest(() => openai.responses.create({
+      model: 'gpt-5.1',
+      input: [
         {
           role: 'system',
           content: `
@@ -483,8 +483,8 @@ app.post('/api/update-graph', async (req, res) => {
         { role: 'user', content: `현재 그래프 상태(간략): ${JSON.stringify(simplifiedNodes)}` },
         { role: 'user', content: `현재 존재하는 키워드: ${JSON.stringify(existingKeywords)}` }
       ],
-      max_tokens: 600,
-      response_format: { type: "json_object" }
+      max_output_tokens: 600,
+      text: { format: { type: "json_object" } }
     }));
 
     const raw = extractAssistantText(response);
@@ -568,7 +568,7 @@ app.post('/api/label-node', async (req, res) => {
         { role: "user", content: `기존 키워드: ${JSON.stringify(existing)}` },
         { role: "user", content: `대화:\n${text}` },
       ],
-      max_tokens: 120,
+      max_completion_tokens: 120,
       // ❌ response_format 제거 (배열 강제와 충돌)
     });
 

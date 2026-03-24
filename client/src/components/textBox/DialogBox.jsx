@@ -50,7 +50,7 @@ const MessageBubble = styled.div`
         return props.isUser ? 'none' : '1px solid rgba(217, 217, 217, 0.5)';
       }};
     word-wrap: break-word;
-    text-align: ${(props) => (props.isUser ? 'right' : 'left')};
+    text-align: left;
     transition: all 0.3s ease;
     transform: ${(props) => (props.isActive && props.isScrolled ? 'scale(1.01)' : 'scale(1)')};
     box-shadow: ${(props) => (props.isActive && props.isScrolled ? '0 4px 12px rgba(0, 0, 0, 0.1)' : 'none')};
@@ -262,7 +262,7 @@ const DialogBox = ({ text, isUser, nodeId, number, attachments }) => {
             )}
             <MessageBubble isUser={isUser} isActive={isActive} isScrolled={isScrolled} isContextMode={hasAnyContext} isContextActive={isContextActive} activeColor={activeColor}>
                 <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
-                    {text}
+                    {isUser ? text.replace(/\n/g, '  \n') : text}
                 </ReactMarkdown>
             </MessageBubble>
         </Container>
